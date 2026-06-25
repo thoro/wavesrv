@@ -51,8 +51,29 @@
         background: rgba(255, 255, 255, 0.08);
     }
 
+    .workspace-search {
+        width: calc(100% - 16px);
+        margin: 0 8px 5px;
+        padding: 4px 8px;
+        font-size: 12px;
+        line-height: 19px;
+        color: var(--main-text-color);
+        background-color: rgb(from var(--main-text-color) r g b / 0.07);
+        border: 1px solid var(--modal-border-color);
+        border-radius: 4px;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--secondary-text-color);
+        }
+    }
+
     .scrollable {
-        max-height: 400px;
+        max-height: calc(100vh - 140px);
         width: 100%;
     }
 
@@ -122,6 +143,14 @@
 
         &.is-current .menu-group-title-wrapper {
             background-color: rgb(from var(--workspace-color) r g b / 0.1);
+        }
+
+        &.keyboard-selected {
+            border-color: var(--accent-color);
+
+            .menu-group-title-wrapper {
+                background-color: rgb(from var(--accent-color) r g b / 0.15);
+            }
         }
     }
 

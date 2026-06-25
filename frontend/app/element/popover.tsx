@@ -36,6 +36,8 @@ interface PopoverProps {
     offset?: OffsetOptions;
     onDismiss?: () => void;
     middleware?: Middleware[];
+    isOpen?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 const isPopoverButton = (
@@ -52,11 +54,28 @@ const isPopoverContent = (
 
 const Popover = memo(
     forwardRef<HTMLDivElement, PopoverProps>(
-        ({ children, className, placement = "bottom-start", offset = 3, onDismiss, middleware }, ref) => {
-            const [isOpen, setIsOpen] = useState(false);
+        (
+            {
+                children,
+                className,
+                placement = "bottom-start",
+                offset = 3,
+                onDismiss,
+                middleware,
+                isOpen: controlledOpen,
+                onOpenChange,
+            },
+            ref
+        ) => {
+            const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+            const isControlled = controlledOpen != null;
+            const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
 
             const handleOpenChange = (open: boolean) => {
-                setIsOpen(open);
+                if (!isControlled) {
+                    setUncontrolledOpen(open);
+                }
+                onOpenChange?.(open);
                 if (!open && onDismiss) {
                     onDismiss();
                 }

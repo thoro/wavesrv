@@ -16,7 +16,7 @@ import clsx from "clsx";
 import { atom, PrimitiveAtom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { splitAtom } from "jotai/utils";
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
-import { CSSProperties, forwardRef, useCallback, useEffect } from "react";
+import { CSSProperties, forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import WorkspaceSVG from "../asset/workspace.svg";
 import { IconButton } from "../element/iconbutton";
 import { globalStore } from "@/app/store/jotaiStore";
@@ -49,12 +49,18 @@ type WorkspaceList = WorkspaceListEntry[];
 const workspaceMapAtom = atom<WorkspaceList>([]);
 const workspaceSplitAtom = splitAtom(workspaceMapAtom);
 const editingWorkspaceAtom = atom<string>();
+const workspaceSwitcherOpenAtom: PrimitiveAtom<boolean> = atom(false);
 const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
     const env = useWaveEnv<WorkspaceSwitcherEnv>();
     const setWorkspaceList = useSetAtom(workspaceMapAtom);
     const activeWorkspace = useAtomValueSafe(env.atoms.workspace);
     const workspaceList = useAtomValue(workspaceSplitAtom);
+    const rawWorkspaceList = useAtomValue(workspaceMapAtom);
     const setEditingWorkspace = useSetAtom(editingWorkspaceAtom);
+    const [isOpen, setIsOpen] = useAtom(workspaceSwitcherOpenAtom);
+    const [searchText, setSearchText] = useState("");
+    const [selectedIndex, setSelectedIndex] = useState(0);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const updateWorkspaceList = useCallback(async () => {
         const workspaceList = await env.services.workspace.ListWorkspaces();
@@ -86,9 +92,67 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
         fireAndForget(updateWorkspaceList);
     }, []);
 
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+        setSearchText("");
+        setSelectedIndex(0);
+        fireAndForget(updateWorkspaceList);
+        requestAnimationFrame(() => searchInputRef.current?.focus());
+    }, [isOpen]);
+
     const onDeleteWorkspace = useCallback((workspaceId: string) => {
         env.electron.deleteWorkspace(workspaceId);
     }, []);
+
+    const filteredWorkspaces = useMemo(() => {
+        const entries = workspaceList.map((entryAtom, i) => ({
+            entryAtom,
+            workspace: rawWorkspaceList[i]?.workspace,
+        }));
+        const query = searchText.trim().toLowerCase();
+        if (!query) {
+            return entries;
+        }
+        return entries.filter(({ workspace }) => workspace?.name?.toLowerCase().includes(query));
+    }, [workspaceList, rawWorkspaceList, searchText]);
+
+    const switchToWorkspace = useCallback((workspace: Workspace) => {
+        if (!workspace) {
+            return;
+        }
+        env.electron.switchWorkspace(workspace.oid);
+        setIsOpen(false);
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+        const selectedEl = document.querySelector(".workspace-switcher-content .keyboard-selected");
+        selectedEl?.scrollIntoView({ block: "nearest" });
+    }, [selectedIndex, isOpen]);
+
+    const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelectedIndex((prev) => Math.min(prev + 1, filteredWorkspaces.length - 1));
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            switchToWorkspace(filteredWorkspaces[selectedIndex]?.workspace);
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsOpen(false);
+        }
+    };
 
     const isActiveWorkspaceSaved = !!(activeWorkspace.name && activeWorkspace.icon);
 
@@ -110,6 +174,8 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
         <Popover
             className="workspace-switcher-popover"
             placement="bottom-start"
+            isOpen={isOpen}
+            onOpenChange={setIsOpen}
             onDismiss={() => setEditingWorkspace(null)}
             ref={ref}
         >
@@ -124,10 +190,28 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
             </PopoverButton>
             <PopoverContent className="workspace-switcher-content">
                 <div className="title">{isActiveWorkspaceSaved ? "Switch workspace" : "Open workspace"}</div>
+                <input
+                    ref={searchInputRef}
+                    className="workspace-search"
+                    type="text"
+                    placeholder="Search workspaces..."
+                    value={searchText}
+                    onChange={(e) => {
+                        setSearchText(e.target.value);
+                        setSelectedIndex(0);
+                    }}
+                    onKeyDown={handleSearchKeyDown}
+                />
                 <OverlayScrollbarsComponent className={"scrollable"} options={{ scrollbars: { autoHide: "leave" } }}>
                     <ExpandableMenu noIndent singleOpen>
-                        {workspaceList.map((entry, i) => (
-                            <WorkspaceSwitcherItem key={i} entryAtom={entry} onDeleteWorkspace={onDeleteWorkspace} />
+                        {filteredWorkspaces.map(({ entryAtom, workspace }, i) => (
+                            <WorkspaceSwitcherItem
+                                key={workspace?.oid ?? i}
+                                entryAtom={entryAtom}
+                                isSelected={i === selectedIndex}
+                                onSwitchWorkspace={switchToWorkspace}
+                                onDeleteWorkspace={onDeleteWorkspace}
+                            />
                         ))}
                     </ExpandableMenu>
                 </OverlayScrollbarsComponent>
@@ -156,9 +240,13 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
 
 const WorkspaceSwitcherItem = ({
     entryAtom,
+    isSelected,
+    onSwitchWorkspace,
     onDeleteWorkspace,
 }: {
     entryAtom: PrimitiveAtom<WorkspaceListEntry>;
+    isSelected: boolean;
+    onSwitchWorkspace: (workspace: Workspace) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
 }) => {
     const env = useWaveEnv<WorkspaceSwitcherEnv>();
@@ -213,15 +301,9 @@ const WorkspaceSwitcherItem = ({
         <ExpandableMenuItemGroup
             key={workspace.oid}
             isOpen={isEditing}
-            className={clsx({ "is-current": isCurrentWorkspace })}
+            className={clsx({ "is-current": isCurrentWorkspace, "keyboard-selected": isSelected })}
         >
-            <ExpandableMenuItemGroupTitle
-                onClick={() => {
-                    env.electron.switchWorkspace(workspace.oid);
-                    // Create a fake escape key event to close the popover
-                    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-                }}
-            >
+            <ExpandableMenuItemGroupTitle onClick={() => onSwitchWorkspace(workspace)}>
                 <div
                     className="menu-group-title-wrapper"
                     style={
@@ -261,4 +343,4 @@ const WorkspaceSwitcherItem = ({
     );
 };
 
-export { WorkspaceSwitcher };
+export { WorkspaceSwitcher, workspaceSwitcherOpenAtom };
