@@ -72,6 +72,19 @@
         }
     }
 
+    // Offscreen mirror of the tab name used to measure its natural (un-clipped) width.
+    // Sized at the active font-weight so a tab doesn't resize when it becomes active.
+    .name-measure {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        visibility: hidden;
+        pointer-events: none;
+        white-space: nowrap;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
     .wave-button {
         position: absolute;
         top: 50%;

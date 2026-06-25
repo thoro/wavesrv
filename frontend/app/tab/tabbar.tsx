@@ -20,6 +20,7 @@ import { WorkspaceSwitcher } from "./workspaceswitcher";
 
 const TabDefaultWidth = 130;
 const TabMinWidth = 100;
+const TabMaxWidth = 260;
 const MacOSTrafficLightsWidth = 74;
 const MacOSTahoeTrafficLightsWidth = 80;
 
@@ -125,6 +126,8 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const waveAIButtonRef = useRef<HTMLDivElement>(null);
     const appMenuButtonRef = useRef<HTMLDivElement>(null);
     const tabWidthRef = useRef<number>(TabDefaultWidth);
+    // measured desired content width per tabId; tabs are sized to their own text (clamped)
+    const measuredWidthsRef = useRef<Record<string, number>>({});
     const scrollableRef = useRef<boolean>(false);
     const prevAllLoadedRef = useRef<boolean>(false);
     const activeTabId = useAtomValue(env.atoms.staticTabId);
@@ -173,6 +176,22 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         setDragStartPositions(newStartPositions);
     }, []);
 
+    const getTabWidth = (tabId: string): number => {
+        const measured = measuredWidthsRef.current[tabId] ?? TabDefaultWidth;
+        return Math.max(TabMinWidth, Math.min(measured, TabMaxWidth));
+    };
+
+    // Cumulative left offset of the tab at `index` within the given ordering.
+    const getTabOffset = (ids: string[], index: number): number => {
+        let offset = 0;
+        for (let i = 0; i < index; i++) {
+            offset += getTabWidth(ids[i]);
+        }
+        return offset;
+    };
+
+    const getTotalTabsWidth = (ids: string[]): number => ids.reduce((sum, id) => sum + getTabWidth(id), 0);
+
     const setSizeAndPosition = (animate?: boolean) => {
         const tabBar = tabBarRef.current;
         if (tabBar === null) return;
@@ -201,18 +220,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             waveAIButtonWidth;
         const spaceForTabs = tabbarWrapperWidth - nonTabElementsWidth;
 
-        const numberOfTabs = tabIds.length;
-
-        // Compute the ideal width per tab by dividing the available space by the number of tabs
-        let idealTabWidth = spaceForTabs / numberOfTabs;
-
-        // Apply min/max constraints
-        idealTabWidth = Math.max(TabMinWidth, Math.min(idealTabWidth, TabDefaultWidth));
-
-        // Determine if the tab bar needs to be scrollable
-        const newScrollable = idealTabWidth * numberOfTabs > spaceForTabs;
-
-        // Apply the calculated width and position to all tabs
+        // Each tab is sized to its own measured content width (clamped). Tabs keep their
+        // content width rather than stretching to fill the bar; leftover space stays empty.
+        let cumulativeLeft = 0;
         tabRefs.current.forEach((ref, index) => {
             if (ref.current) {
                 if (animate) {
@@ -220,16 +230,21 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                 } else {
                     ref.current.classList.remove("animate");
                 }
-                ref.current.style.width = `${idealTabWidth}px`;
-                ref.current.style.transform = `translate3d(${index * idealTabWidth}px,0,0)`;
+                const width = getTabWidth(tabIds[index]);
+                ref.current.style.width = `${width}px`;
+                ref.current.style.transform = `translate3d(${cumulativeLeft}px,0,0)`;
                 ref.current.style.opacity = "1";
+                cumulativeLeft += width;
             }
         });
 
-        // Update the state with the new tab width if it has changed
-        if (idealTabWidth !== tabWidthRef.current) {
-            tabWidthRef.current = idealTabWidth;
-        }
+        const totalTabsWidth = cumulativeLeft;
+
+        // Track the active tab width for the new-tab animation fallback
+        tabWidthRef.current = activeTabId != null ? getTabWidth(activeTabId) : TabDefaultWidth;
+
+        // Determine if the tab bar needs to be scrollable
+        const newScrollable = totalTabsWidth > spaceForTabs;
 
         // Update the state with the new scrollable state if it has changed
         if (newScrollable !== scrollableRef.current) {
@@ -255,6 +270,26 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         setSizeAndPosition();
         saveTabsPositionDebounced();
     }, [tabIds, newTabId, isFullScreen]);
+
+    // re-layout after tab measurements settle (debounced to coalesce a batch of reports)
+    const relayoutDebounced = useCallback(
+        debounce(50, () => {
+            setSizeAndPosition();
+            saveTabsPositionDebounced();
+        }),
+        [saveTabsPositionDebounced]
+    );
+
+    const handleTabMeasure = useCallback(
+        (tabId: string, width: number) => {
+            if (measuredWidthsRef.current[tabId] === width) {
+                return;
+            }
+            measuredWidthsRef.current[tabId] = width;
+            relayoutDebounced();
+        },
+        [relayoutDebounced]
+    );
 
     // update layout on reinit version
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
@@ -310,20 +345,20 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
     const getNewTabIndex = (currentX: number, tabIndex: number, dragDirection: string) => {
         let newTabIndex = tabIndex;
-        const tabWidth = tabWidthRef.current;
+        const draggedWidth = getTabWidth(tabIds[tabIndex]);
         if (dragDirection === "+") {
-            // Dragging to the right
+            // Dragging to the right: move past a neighbor once the dragged tab's right edge clears its midpoint
             for (let i = tabIndex + 1; i < tabIds.length; i++) {
-                const otherTabStart = dragStartPositions[i];
-                if (currentX + tabWidth > otherTabStart + tabWidth / 2) {
+                const otherMidpoint = dragStartPositions[i] + getTabWidth(tabIds[i]) / 2;
+                if (currentX + draggedWidth > otherMidpoint) {
                     newTabIndex = i;
                 }
             }
         } else {
-            // Dragging to the left
+            // Dragging to the left: move past a neighbor once the dragged tab's left edge clears its midpoint
             for (let i = tabIndex - 1; i >= 0; i--) {
-                const otherTabEnd = dragStartPositions[i] + tabWidth;
-                if (currentX < otherTabEnd - tabWidth / 2) {
+                const otherMidpoint = dragStartPositions[i] + getTabWidth(tabIds[i]) / 2;
+                if (currentX < otherMidpoint) {
                     newTabIndex = i;
                 }
             }
@@ -347,7 +382,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         const incrementDecrement = tabBarRectLeftOffset * 0.05;
         const dragDirection = getDragDirection(currentX);
         const scrollable = scrollableRef.current;
-        const tabWidth = tabWidthRef.current;
+        const tabWidth = getTabWidth(tabId);
 
         // Scroll the tab bar if the dragged tab overflows the container bounds
         if (scrollable) {
@@ -383,11 +418,10 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
         // Constrain movement within the container bounds
         if (tabBarRef.current) {
-            const numberOfTabs = tabIds.length;
-            const totalDefaultTabWidth = numberOfTabs * TabDefaultWidth;
-            if (totalDefaultTabWidth < tabBarRectWidth) {
-                // Set to the total default tab width if there's vacant space
-                tabBarRectWidth = totalDefaultTabWidth;
+            const totalTabsWidth = getTotalTabsWidth(tabIds);
+            if (totalTabsWidth < tabBarRectWidth) {
+                // Set to the total tabs width if there's vacant space
+                tabBarRectWidth = totalTabsWidth;
             } else if (scrollable) {
                 // Set to the scrollable width if the tab bar is scrollable
                 tabBarRectWidth = tabsWrapperRef.current.scrollWidth;
@@ -422,11 +456,11 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             }
             tabIds.splice(newTabIndex, 0, tabId);
 
-            // Update visual positions of the tabs
+            // Update visual positions of the tabs using cumulative offsets (widths vary per tab)
             tabIds.forEach((localTabId, index) => {
                 const ref = tabRefs.current.find((ref) => ref.current.dataset.tabId === localTabId);
                 if (ref.current && localTabId !== tabId) {
-                    ref.current.style.transform = `translate3d(${index * tabWidth}px,0,0)`;
+                    ref.current.style.transform = `translate3d(${getTabOffset(tabIds, index)}px,0,0)`;
                     ref.current.classList.add("animate");
                 }
             });
@@ -455,8 +489,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
         // Update the final position of the dragged tab
         const draggingTab = tabIds[tabIndex];
-        const tabWidth = tabWidthRef.current;
-        const finalLeftPosition = tabIndex * tabWidth;
+        const finalLeftPosition = getTabOffset(tabIds, tabIndex);
         const ref = tabRefs.current.find((ref) => ref.current.dataset.tabId === draggingTab);
         if (ref.current) {
             ref.current.classList.add("animate");
@@ -517,7 +550,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         debounce(30, () => {
             if (scrollableRef.current) {
                 const { viewport } = osInstanceRef.current.elements();
-                viewport.scrollLeft = tabIds.length * tabWidthRef.current;
+                viewport.scrollLeft = getTotalTabsWidth(tabIds);
             }
         }),
         [tabIds]
@@ -570,7 +603,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         env.electron.showWorkspaceAppMenu(workspace.oid);
     }
 
-    const tabsWrapperWidth = tabIds.length * tabWidthRef.current;
+    const tabsWrapperWidth = getTotalTabsWidth(tabIds);
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
 
     // Calculate window drag left width based on platform and state
@@ -648,8 +681,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                                     onClose={(event) => handleCloseTab(event, tabId)}
                                     onLoaded={() => handleTabLoaded(tabId)}
                                     isDragging={draggingTab === tabId}
-                                    tabWidth={tabWidthRef.current}
+                                    tabWidth={getTabWidth(tabId)}
                                     isNew={tabId === newTabId}
+                                    onMeasure={(width) => handleTabMeasure(tabId, width)}
                                 />
                             );
                         })}

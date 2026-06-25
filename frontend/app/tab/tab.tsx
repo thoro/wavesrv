@@ -32,6 +32,13 @@ export type TabEnv = WaveEnvSubset<{
     showContextMenu: WaveEnv["showContextMenu"];
 }>;
 
+// space reserved next to the tab name for left padding, the close button and right padding
+const TabChromeWidth = 50;
+// per-badge horizontal allowance (icon + gap)
+const TabBadgeWidth = 18;
+// max characters kept for a tab name (text beyond the tab's max width is ellipsized visually)
+const MaxTabNameLength = 50;
+
 interface TabVProps {
     tabId: string;
     tabName: string;
@@ -47,6 +54,8 @@ interface TabVProps {
     onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
     onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void;
     onRename: (newName: string) => void;
+    /** Reports the tab's desired content width (name + chrome) so the tab bar can size it */
+    onMeasure?: (width: number) => void;
     /** Optional ref that TabV populates with a startRename() function for external callers */
     renameRef?: React.RefObject<(() => void) | null>;
 }
@@ -67,15 +76,16 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         onDragStart,
         onContextMenu,
         onRename,
+        onMeasure,
         renameRef,
     } = props;
-    const MaxTabNameLength = 14;
     const truncateTabName = (name: string) => [...(name ?? "")].slice(0, MaxTabNameLength).join("");
     const displayName = truncateTabName(tabName);
     const [originalName, setOriginalName] = useState(displayName);
     const [isEditable, setIsEditable] = useState(false);
 
     const editableRef = useRef<HTMLDivElement>(null);
+    const measureRef = useRef<HTMLSpanElement>(null);
     const editableTimeoutRef = useRef<NodeJS.Timeout>(null);
     const tabRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +167,10 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
             editableRef.current.blur();
             event.preventDefault();
             event.stopPropagation();
-        } else if (curLen >= 14 && !["Backspace", "Delete", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        } else if (
+            curLen >= MaxTabNameLength &&
+            !["Backspace", "Delete", "ArrowLeft", "ArrowRight"].includes(event.key)
+        ) {
             const selection = window.getSelection();
             if (!selection || selection.isCollapsed) {
                 event.preventDefault();
@@ -173,6 +186,15 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
             tabRef.current.style.setProperty("--final-tab-width", `${tabWidth}px`);
         }
     }, [isNew, tabWidth]);
+
+    useEffect(() => {
+        if (measureRef.current == null || onMeasure == null) {
+            return;
+        }
+        const badgeCount = badges?.length ?? 0;
+        const badgeAllowance = flagColor != null || badgeCount > 0 ? badgeCount * TabBadgeWidth + 6 : 0;
+        onMeasure(measureRef.current.offsetWidth + TabChromeWidth + badgeAllowance);
+    }, [displayName, active, badges, flagColor, onMeasure]);
 
     const handleMouseDownOnClose = (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
         event.stopPropagation();
@@ -204,6 +226,9 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 >
                     {displayName}
                 </div>
+                <span ref={measureRef} className="name-measure" aria-hidden="true">
+                    {displayName}
+                </span>
                 <TabBadges badges={badges} flagColor={flagColor} />
                 <Button
                     className="ghost grey close"
@@ -231,10 +256,12 @@ interface TabProps {
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
     onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
     onLoaded: () => void;
+    onMeasure?: (width: number) => void;
 }
 
 const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
-    const { id, active, showDivider, isDragging, tabWidth, isNew, onLoaded, onSelect, onClose, onDragStart } = props;
+    const { id, active, showDivider, isDragging, tabWidth, isNew, onLoaded, onSelect, onClose, onDragStart, onMeasure } =
+        props;
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
@@ -309,6 +336,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             onDragStart={onDragStart}
             onContextMenu={handleContextMenu}
             onRename={handleRename}
+            onMeasure={onMeasure}
             renameRef={renameRef}
         />
     );
