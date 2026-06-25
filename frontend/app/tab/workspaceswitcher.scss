@@ -7,7 +7,7 @@
     padding: 0px 12px;
     justify-content: flex-end;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     border-radius: 6px;
     margin-right: 6px;
     margin-bottom: 4px;
@@ -24,6 +24,16 @@
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+
+    .workspace-name {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--main-text-color);
+        white-space: nowrap;
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 }
 

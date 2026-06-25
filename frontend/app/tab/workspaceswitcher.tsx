@@ -1,7 +1,7 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
+import { SettingsKeyAtomFnType, useWaveEnv, WaveEnv, WaveEnvSubset } from "@/app/waveenv/waveenv";
 import {
     ExpandableMenu,
     ExpandableMenuItem,
@@ -38,6 +38,7 @@ export type WorkspaceSwitcherEnv = WaveEnvSubset<{
         workspace: WaveEnv["services"]["workspace"];
     };
     wos: WaveEnv["wos"];
+    getSettingsKeyAtom: SettingsKeyAtomFnType<"app:showworkspacename">;
 }>;
 
 type WorkspaceListEntry = {
@@ -61,6 +62,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
     const [searchText, setSearchText] = useState("");
     const [selectedIndex, setSelectedIndex] = useState(0);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const showWorkspaceName = useAtomValue(env.getSettingsKeyAtom("app:showworkspacename"));
 
     const updateWorkspaceList = useCallback(async () => {
         const workspaceList = await env.services.workspace.ListWorkspaces();
@@ -187,6 +189,9 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
                 }}
             >
                 <span className="workspace-icon">{workspaceIcon}</span>
+                {showWorkspaceName && activeWorkspace?.name ? (
+                    <span className="workspace-name">{activeWorkspace.name}</span>
+                ) : null}
             </PopoverButton>
             <PopoverContent className="workspace-switcher-content">
                 <div className="title">{isActiveWorkspaceSaved ? "Switch workspace" : "Open workspace"}</div>

@@ -1383,6 +1383,7 @@ declare global {
         "app:ctrlvpaste"?: boolean;
         "app:confirmquit"?: boolean;
         "app:hideaibutton"?: boolean;
+        "app:showworkspacename"?: boolean;
         "app:disablectrlshiftarrows"?: boolean;
         "app:disablectrlshiftdisplay"?: boolean;
         "app:focusfollowscursor"?: string;
@@ -1589,6 +1590,7 @@ declare global {
         "debug:panictype"?: string;
         "block:view"?: string;
         "block:controller"?: string;
+        "block:subblock"?: boolean;
         "ai:backendtype"?: string;
         "ai:local"?: boolean;
         "wsh:cmd"?: string;

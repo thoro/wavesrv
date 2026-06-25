@@ -29,6 +29,9 @@
         "app:hideaibutton": {
           "type": "boolean"
         },
+        "app:showworkspacename": {
+          "type": "boolean"
+        },
         "app:disablectrlshiftarrows": {
           "type": "boolean"
         },
