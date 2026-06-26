@@ -125,9 +125,11 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const workspaceSwitcherRef = useRef<HTMLDivElement>(null);
     const waveAIButtonRef = useRef<HTMLDivElement>(null);
     const appMenuButtonRef = useRef<HTMLDivElement>(null);
-    const tabWidthRef = useRef<number>(TabDefaultWidth);
-    // measured desired content width per tabId; tabs are sized to their own text (clamped)
+    // raw measured content width per tabId (accumulation buffer, flushed into tabWidths state)
     const measuredWidthsRef = useRef<Record<string, number>>({});
+    // applied per-tab widths; kept in state so the wrapper width (and the +/right elements)
+    // re-render and the layout effect re-runs with a fresh closure when measurements change
+    const [tabWidths, setTabWidths] = useState<Record<string, number>>({});
     const scrollableRef = useRef<boolean>(false);
     const prevAllLoadedRef = useRef<boolean>(false);
     const activeTabId = useAtomValue(env.atoms.staticTabId);
@@ -177,7 +179,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     }, []);
 
     const getTabWidth = (tabId: string): number => {
-        const measured = measuredWidthsRef.current[tabId] ?? TabDefaultWidth;
+        const measured = tabWidths[tabId] ?? TabDefaultWidth;
         return Math.max(TabMinWidth, Math.min(measured, TabMaxWidth));
     };
 
@@ -240,9 +242,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
 
         const totalTabsWidth = cumulativeLeft;
 
-        // Track the active tab width for the new-tab animation fallback
-        tabWidthRef.current = activeTabId != null ? getTabWidth(activeTabId) : TabDefaultWidth;
-
         // Determine if the tab bar needs to be scrollable
         const newScrollable = totalTabsWidth > spaceForTabs;
 
@@ -271,13 +270,13 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         saveTabsPositionDebounced();
     }, [tabIds, newTabId, isFullScreen]);
 
-    // re-layout after tab measurements settle (debounced to coalesce a batch of reports)
-    const relayoutDebounced = useCallback(
+    // flush accumulated measurements into state (debounced to coalesce a batch of reports);
+    // the resulting re-render updates the wrapper width and re-runs the layout effect
+    const flushTabWidthsDebounced = useCallback(
         debounce(50, () => {
-            setSizeAndPosition();
-            saveTabsPositionDebounced();
+            setTabWidths({ ...measuredWidthsRef.current });
         }),
-        [saveTabsPositionDebounced]
+        []
     );
 
     const handleTabMeasure = useCallback(
@@ -286,10 +285,16 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                 return;
             }
             measuredWidthsRef.current[tabId] = width;
-            relayoutDebounced();
+            flushTabWidthsDebounced();
         },
-        [relayoutDebounced]
+        [flushTabWidthsDebounced]
     );
+
+    // reposition/resize tabs whenever applied widths change (fresh closure over current tabs)
+    useEffect(() => {
+        setSizeAndPosition();
+        saveTabsPositionDebounced();
+    }, [tabWidths]);
 
     // update layout on reinit version
     const reinitVersion = useAtomValue(env.atoms.reinitVersion);
