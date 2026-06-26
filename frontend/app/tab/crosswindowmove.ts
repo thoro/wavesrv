@@ -15,7 +15,7 @@ export async function moveTabToWorkspaceAtPoint(
     screenX: number,
     screenY: number
 ): Promise<boolean> {
-    const targetWorkspaceId = await getApi().getWorkspaceAtPoint(screenX, screenY);
+    const targetWorkspaceId = await getApi().getWorkspaceAtPoint(screenX, screenY, sourceWorkspaceId);
     if (!targetWorkspaceId || targetWorkspaceId === sourceWorkspaceId) {
         return false;
     }

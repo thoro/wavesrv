@@ -94,7 +94,7 @@ declare global {
         showWorkspaceAppMenu: (workspaceId: string) => void; // workspace-appmenu-show
         showBuilderAppMenu: (builderId: string) => void; // builder-appmenu-show
         showContextMenu: (workspaceId: string, menu: ElectronContextMenuItem[]) => void; // contextmenu-show
-        getWorkspaceAtPoint: (x: number, y: number) => Promise<string>; // get-workspace-at-point
+        getWorkspaceAtPoint: (x: number, y: number, sourceWorkspaceId: string) => Promise<string>; // get-workspace-at-point
         onContextMenuClick: (callback: (id: string | null) => void) => void; // contextmenu-click
         onNavigate: (callback: (url: string) => void) => void;
         onIframeNavigate: (callback: (url: string) => void) => void;

@@ -267,19 +267,26 @@ export function initIpcHandlers() {
     });
 
     // Returns the workspace id of the Wave window at the given screen point, or "" if none.
-    // Used to complete a cross-window tab drag from the source window once the drag ends.
-    electron.ipcMain.handle("get-workspace-at-point", (_event, x: number, y: number) => {
-        for (const ww of getAllWaveWindows()) {
-            if (ww.isDestroyed()) {
-                continue;
+    // Used to complete a cross-window tab drag from the source window once the drag ends. The
+    // source workspace is preferred when the cursor is still over its window, so an in-window
+    // reorder is never mistaken for a cross-window move when windows overlap.
+    electron.ipcMain.handle(
+        "get-workspace-at-point",
+        (_event, x: number, y: number, sourceWorkspaceId: string) => {
+            const inBounds = (b: Electron.Rectangle) => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height;
+            const windows = getAllWaveWindows().filter((ww) => !ww.isDestroyed());
+            const source = windows.find((ww) => ww.workspaceId === sourceWorkspaceId);
+            if (source != null && inBounds(source.getBounds())) {
+                return source.workspaceId;
             }
-            const b = ww.getBounds();
-            if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) {
-                return ww.workspaceId;
+            for (const ww of windows) {
+                if (inBounds(ww.getBounds())) {
+                    return ww.workspaceId;
+                }
             }
+            return "";
         }
-        return "";
-    });
+    );
 
     electron.ipcMain.handle("capture-screenshot", async (event, rect) => {
         const tabView = getWaveTabViewByWebContentsId(event.sender.id);

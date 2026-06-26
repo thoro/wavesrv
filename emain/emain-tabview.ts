@@ -5,7 +5,7 @@ import { RpcApi } from "@/app/store/wshclientapi";
 import { adaptFromElectronKeyEvent, checkKeyPressed } from "@/util/keyutil";
 import { CHORD_TIMEOUT } from "@/util/sharedconst";
 import { Rectangle, shell, WebContentsView } from "electron";
-import { createNewWaveWindow, getWaveWindowById } from "emain/emain-window";
+import { createNewWaveWindow, getWaveWindowById, getWaveWindowByTabId } from "emain/emain-window";
 import path from "path";
 import { configureAuthKeyRequestInjection } from "./authkey";
 import { setWasActive } from "./emain-activity";
@@ -303,6 +303,15 @@ export function clearTabCache() {
 // returns [tabview, initialized]
 export async function getOrCreateWebViewForTab(waveWindowId: string, tabId: string): Promise<[WaveTabView, boolean]> {
     let tabView = getWaveTabView(tabId);
+    if (tabView != null && tabView.waveWindowId !== waveWindowId) {
+        // The tab was moved to a different window. A WaveTabView can only be a child of one
+        // window's contentView, so tear down the stale view in its old window and rebuild a
+        // fresh one for the destination (the backend block controllers survive the move).
+        const oldWindow = getWaveWindowByTabId(tabId);
+        oldWindow?.removeTabView(tabId, true);
+        removeWaveTabView(tabId);
+        tabView = undefined;
+    }
     if (tabView) {
         return [tabView, true];
     }

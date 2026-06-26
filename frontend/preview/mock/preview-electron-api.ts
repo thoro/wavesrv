@@ -18,7 +18,7 @@ const previewElectronApi: ElectronApi = {
     showWorkspaceAppMenu: (_workspaceId: string) => {},
     showBuilderAppMenu: (_builderId: string) => {},
     showContextMenu: (_workspaceId: string, _menu: ElectronContextMenuItem[]) => {},
-    getWorkspaceAtPoint: (_x: number, _y: number) => Promise.resolve(""),
+    getWorkspaceAtPoint: (_x: number, _y: number, _sourceWorkspaceId: string) => Promise.resolve(""),
     onContextMenuClick: (_callback: (id: string | null) => void) => {},
     onNavigate: (_callback: (url: string) => void) => {},
     onIframeNavigate: (_callback: (url: string) => void) => {},
