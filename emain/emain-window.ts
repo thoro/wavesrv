@@ -23,7 +23,11 @@ import { delay, ensureBoundsAreVisible, waveKeyToElectronKey } from "./emain-uti
 import { ElectronWshClient } from "./emain-wsh";
 import { updater } from "./updater";
 
-const DevInitTimeoutMs = 5000;
+// Dev-only safety timeout that surfaces devtools if a tab never finishes init. The cold
+// Vite dev-server load (Monaco/mermaid/shiki/cytoscape transformed on demand) can take
+// 15-20s on first start; a short timeout fires mid-load, aborts the wave-init handshake,
+// and leaves a blank, unmovable window. Keep this comfortably above the cold-load time.
+const DevInitTimeoutMs = 30000;
 
 export type WindowOpts = {
     unamePlatform: NodeJS.Platform;
