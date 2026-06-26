@@ -37,6 +37,7 @@ const previewElectronApi: ElectronApi = {
     onControlShiftStateUpdate: (_callback: (state: boolean) => void) => {},
     createWorkspace: () => {},
     switchWorkspace: (_workspaceId: string) => {},
+    openWorkspaceInNewWindow: (_workspaceId: string) => {},
     deleteWorkspace: (_workspaceId: string) => {},
     setActiveTab: (_tabId: string) => {},
     createTab: () => {},

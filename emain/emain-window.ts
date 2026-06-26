@@ -795,6 +795,13 @@ ipcMain.on("switch-workspace", (event, workspaceId) => {
     });
 });
 
+ipcMain.on("open-workspace-new-window", (_event, workspaceId) => {
+    fireAndForget(async () => {
+        console.log("open-workspace-new-window", workspaceId);
+        await createWindowForWorkspace(workspaceId);
+    });
+});
+
 export async function createWorkspace(window: WaveBrowserWindow) {
     const newWsId = await WorkspaceService.CreateWorkspace("", "", "", true);
     if (newWsId) {

@@ -108,8 +108,6 @@ const WorkspaceEditorComponent = ({
                 className={clsx("py-[3px]", { error: title === "" })}
                 onChange={onTitleChange}
                 value={title}
-                autoFocus
-                autoSelect
             />
             <ColorSelector selectedColor={color} colors={colors} onSelect={onColorChange} />
             <IconSelector selectedIcon={icon} icons={icons} onSelect={onIconChange} />

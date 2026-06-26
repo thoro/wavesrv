@@ -113,6 +113,7 @@ declare global {
         onControlShiftStateUpdate: (callback: (state: boolean) => void) => void; // control-shift-state-update
         createWorkspace: () => void; // create-workspace
         switchWorkspace: (workspaceId: string) => void; // switch-workspace
+        openWorkspaceInNewWindow: (workspaceId: string) => void; // open-workspace-new-window
         deleteWorkspace: (workspaceId: string) => void; // delete-workspace
         setActiveTab: (tabId: string) => void; // set-active-tab
         createTab: () => void; // create-tab

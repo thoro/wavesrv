@@ -30,6 +30,7 @@ export type WorkspaceSwitcherEnv = WaveEnvSubset<{
         deleteWorkspace: WaveEnv["electron"]["deleteWorkspace"];
         createWorkspace: WaveEnv["electron"]["createWorkspace"];
         switchWorkspace: WaveEnv["electron"]["switchWorkspace"];
+        openWorkspaceInNewWindow: WaveEnv["electron"]["openWorkspaceInNewWindow"];
     };
     atoms: {
         workspace: WaveEnv["atoms"]["workspace"];
@@ -100,6 +101,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
         }
         setSearchText("");
         setSelectedIndex(0);
+        setEditingWorkspace(null);
         fireAndForget(updateWorkspaceList);
         requestAnimationFrame(() => searchInputRef.current?.focus());
     }, [isOpen]);
@@ -112,6 +114,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
         const entries = workspaceList.map((entryAtom, i) => ({
             entryAtom,
             workspace: rawWorkspaceList[i]?.workspace,
+            windowId: rawWorkspaceList[i]?.windowId,
         }));
         const query = searchText.trim().toLowerCase();
         if (!query) {
@@ -125,6 +128,19 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
             return;
         }
         env.electron.switchWorkspace(workspace.oid);
+        setIsOpen(false);
+    }, []);
+
+    // Shift+Enter: open the workspace in a new window if it isn't open yet; otherwise focus its window.
+    const openWorkspaceInNewWindow = useCallback((entry: { workspace: Workspace; windowId: string }) => {
+        if (!entry?.workspace) {
+            return;
+        }
+        if (entry.windowId) {
+            env.electron.switchWorkspace(entry.workspace.oid);
+        } else {
+            env.electron.openWorkspaceInNewWindow(entry.workspace.oid);
+        }
         setIsOpen(false);
     }, []);
 
@@ -148,7 +164,12 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
         } else if (e.key === "Enter") {
             e.preventDefault();
             e.stopPropagation();
-            switchToWorkspace(filteredWorkspaces[selectedIndex]?.workspace);
+            const entry = filteredWorkspaces[selectedIndex];
+            if (e.shiftKey) {
+                openWorkspaceInNewWindow(entry);
+            } else {
+                switchToWorkspace(entry?.workspace);
+            }
         } else if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
