@@ -94,9 +94,7 @@ declare global {
         showWorkspaceAppMenu: (workspaceId: string) => void; // workspace-appmenu-show
         showBuilderAppMenu: (builderId: string) => void; // builder-appmenu-show
         showContextMenu: (workspaceId: string, menu: ElectronContextMenuItem[]) => void; // contextmenu-show
-        setPendingTabDrag: (sourceWorkspaceId: string, tabId: string) => void; // set-pending-tab-drag
-        clearPendingTabDrag: () => void; // clear-pending-tab-drag
-        getPendingTabDrag: () => Promise<{ sourceworkspaceid: string; tabid: string; ts: number }>; // get-pending-tab-drag
+        getWorkspaceAtPoint: (x: number, y: number) => Promise<string>; // get-workspace-at-point
         onContextMenuClick: (callback: (id: string | null) => void) => void; // contextmenu-click
         onNavigate: (callback: (url: string) => void) => void;
         onIframeNavigate: (callback: (url: string) => void) => void;

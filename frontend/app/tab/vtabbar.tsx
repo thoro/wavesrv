@@ -12,6 +12,7 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { moveTabToWorkspaceAtPoint } from "./crosswindowmove";
 import { buildTabBarContextMenu, buildTabContextMenu, getMoveTabTargets } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
 import { VTab, VTabItem } from "./vtab";
@@ -98,7 +99,7 @@ interface VTabWrapperProps {
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
     onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
     onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDragEnd: () => void;
+    onDragEnd: (event: React.DragEvent<HTMLDivElement>) => void;
     onHoverChanged: (isHovered: boolean) => void;
 }
 
@@ -298,6 +299,16 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
         setDropLineTop(null);
     };
 
+    // On drag end, if the tab was released over a different Wave window, move it to that
+    // window's workspace. An in-window drop fires onDrop first (reorder); the hit-test then
+    // resolves to this same window and no move happens.
+    const handleDragEnd = (event: React.DragEvent, tabId: string) => {
+        const screenX = event.screenX;
+        const screenY = event.screenY;
+        clearDragState();
+        fireAndForget(() => moveTabToWorkspaceAtPoint(workspace.oid, tabId, screenX, screenY));
+    };
+
     const reorder = (targetIndex: number) => {
         const sourceTabId = dragSourceRef.current;
         if (sourceTabId == null) {
@@ -411,7 +422,7 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                                 }
                                 clearDragState();
                             }}
-                            onDragEnd={clearDragState}
+                            onDragEnd={(event) => handleDragEnd(event, tabId)}
                             onHoverChanged={(isHovered) => setHoveredTabId(isHovered ? tabId : null)}
                         />
                     );

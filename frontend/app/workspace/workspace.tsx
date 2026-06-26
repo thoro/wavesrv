@@ -7,7 +7,6 @@ import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
 import { TabBar } from "@/app/tab/tabbar";
 import { TabContent } from "@/app/tab/tabcontent";
-import { TabDropHandler } from "@/app/tab/tabdrophandler";
 import { TabSwitcher } from "@/app/tab/tabswitcher";
 import { VTabBar } from "@/app/tab/vtabbar";
 import { Widgets } from "@/app/workspace/widgets";
@@ -112,7 +111,6 @@ const WorkspaceElem = memo(() => {
     return (
         <div className="flex flex-col w-full flex-grow overflow-hidden">
             <TabSwitcher />
-            <TabDropHandler />
             {!(showLeftTabBar && isMacOS()) && <TabBar key={ws.oid} workspace={ws} noTabs={showLeftTabBar} />}
             {showLeftTabBar && isMacOS() && <MacOSTabBarSpacer />}
             <div ref={panelContainerRef} className="flex flex-row flex-grow overflow-hidden">

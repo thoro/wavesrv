@@ -24,20 +24,13 @@ import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-p
 import { getWaveTabViewByWebContentsId } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
 import { getWaveVersion } from "./emain-wavesrv";
-import { createNewWaveWindow, getWaveWindowByWebContentsId } from "./emain-window";
+import { createNewWaveWindow, getAllWaveWindows, getWaveWindowByWebContentsId } from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 
 const electronApp = electron.app;
 
 let webviewFocusId: number = null;
 let webviewKeys: string[] = [];
-
-// Cross-window tab drag handoff: the source window arms this when a tab drag is in
-// progress; the window the tab is dropped on reads it on mouseup to complete the move.
-// The timestamp guards against a stale entry triggering a spurious move on an unrelated
-// click (a drop released over the desktop never clears the entry).
-type PendingTabDrag = { sourceworkspaceid: string; tabid: string; ts: number };
-let pendingTabDrag: PendingTabDrag = null;
 
 export function openBuilderWindow(appId?: string) {
     const normalizedAppId = appId || "";
@@ -273,16 +266,19 @@ export function initIpcHandlers() {
         event.returnValue = retVal;
     });
 
-    electron.ipcMain.on("set-pending-tab-drag", (_event, sourceWorkspaceId: string, tabId: string) => {
-        pendingTabDrag = { sourceworkspaceid: sourceWorkspaceId, tabid: tabId, ts: Date.now() };
-    });
-
-    electron.ipcMain.on("clear-pending-tab-drag", () => {
-        pendingTabDrag = null;
-    });
-
-    electron.ipcMain.handle("get-pending-tab-drag", () => {
-        return pendingTabDrag;
+    // Returns the workspace id of the Wave window at the given screen point, or "" if none.
+    // Used to complete a cross-window tab drag from the source window once the drag ends.
+    electron.ipcMain.handle("get-workspace-at-point", (_event, x: number, y: number) => {
+        for (const ww of getAllWaveWindows()) {
+            if (ww.isDestroyed()) {
+                continue;
+            }
+            const b = ww.getBounds();
+            if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) {
+                return ww.workspaceId;
+            }
+        }
+        return "";
     });
 
     electron.ipcMain.handle("capture-screenshot", async (event, rect) => {

@@ -30,7 +30,7 @@ interface VTabProps {
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
     onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
     onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
-    onDragEnd: () => void;
+    onDragEnd: (event: React.DragEvent<HTMLDivElement>) => void;
     onHoverChanged?: (isHovered: boolean) => void;
     renameRef?: React.RefObject<(() => void) | null>;
 }

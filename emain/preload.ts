@@ -18,10 +18,7 @@ contextBridge.exposeInMainWorld("api", {
     getWebviewPreload: () => ipcRenderer.sendSync("get-webview-preload"),
     getZoomFactor: () => ipcRenderer.sendSync("get-zoom-factor"),
     openNewWindow: () => ipcRenderer.send("open-new-window"),
-    setPendingTabDrag: (sourceWorkspaceId, tabId) =>
-        ipcRenderer.send("set-pending-tab-drag", sourceWorkspaceId, tabId),
-    clearPendingTabDrag: () => ipcRenderer.send("clear-pending-tab-drag"),
-    getPendingTabDrag: () => ipcRenderer.invoke("get-pending-tab-drag"),
+    getWorkspaceAtPoint: (x, y) => ipcRenderer.invoke("get-workspace-at-point", x, y),
     showWorkspaceAppMenu: (workspaceId) => ipcRenderer.send("workspace-appmenu-show", workspaceId),
     showBuilderAppMenu: (builderId) => ipcRenderer.send("builder-appmenu-show", builderId),
     showContextMenu: (workspaceId, menu) => ipcRenderer.send("contextmenu-show", workspaceId, menu),
