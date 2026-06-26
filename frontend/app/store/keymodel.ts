@@ -464,6 +464,17 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
                 }
             }
         }
+        // Cmd+Left/Right navigate tabs by default. This runs only after the focused block
+        // had a chance to consume them (terminals stop propagation at the element; webview/
+        // preview consume via keyDownHandler above), so block-specific uses are preserved.
+        if (keyutil.checkKeyPressed(waveEvent, "Cmd:ArrowLeft")) {
+            switchTab(-1);
+            return true;
+        }
+        if (keyutil.checkKeyPressed(waveEvent, "Cmd:ArrowRight")) {
+            switchTab(1);
+            return true;
+        }
     }
     return false;
 }
