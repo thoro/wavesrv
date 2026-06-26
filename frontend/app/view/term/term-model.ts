@@ -708,20 +708,8 @@ export class TermViewModel implements ViewModel {
             return false;
         }
 
-        if (isMacOS()) {
-            if (keyutil.checkKeyPressed(waveEvent, "Cmd:ArrowLeft")) {
-                this.sendDataToController("\x01"); // Ctrl-A (beginning of line)
-                event.preventDefault();
-                event.stopPropagation();
-                return false;
-            }
-            if (keyutil.checkKeyPressed(waveEvent, "Cmd:ArrowRight")) {
-                this.sendDataToController("\x05"); // Ctrl-E (end of line)
-                event.preventDefault();
-                event.stopPropagation();
-                return false;
-            }
-        }
+        // Cmd+Left/Right are intentionally NOT consumed here so they bubble to the global
+        // handler and navigate tabs by default. Use Ctrl-A / Ctrl-E for line start/end.
         if (keyutil.checkKeyPressed(waveEvent, "Shift:Enter")) {
             const shiftEnterNewlineAtom = getOverrideConfigAtom(this.blockId, "term:shiftenternewline");
             const shiftEnterNewlineEnabled = globalStore.get(shiftEnterNewlineAtom) ?? true;
