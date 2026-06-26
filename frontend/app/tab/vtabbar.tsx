@@ -12,7 +12,7 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { buildTabBarContextMenu, buildTabContextMenu } from "./tabcontextmenu";
+import { buildTabBarContextMenu, buildTabContextMenu, getMoveTabTargets } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
 import { VTab, VTabItem } from "./vtab";
 import { VTabBarEnv } from "./vtabbarenv";
@@ -156,8 +156,12 @@ function VTabWrapper({
         (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
             e.stopPropagation();
-            const menu = buildTabContextMenu(tabId, renameRef, () => onClose(), env);
-            env.showContextMenu(menu, e);
+            const contextEvent = e;
+            fireAndForget(async () => {
+                const moveTargets = await getMoveTabTargets(env);
+                const menu = buildTabContextMenu(tabId, renameRef, () => onClose(), env, moveTargets);
+                env.showContextMenu(menu, contextEvent);
+            });
         },
         [tabId, onClose, env]
     );

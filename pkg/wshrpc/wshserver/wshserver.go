@@ -175,6 +175,20 @@ func (ws *WshServer) UpdateWorkspaceTabIdsCommand(ctx context.Context, workspace
 	return nil
 }
 
+func (ws *WshServer) MoveTabCommand(ctx context.Context, data wshrpc.CommandMoveTabData) error {
+	newSourceActiveTabId, err := wcore.MoveTab(ctx, data.SourceWorkspaceId, data.DestWorkspaceId, data.TabId)
+	if err != nil {
+		return fmt.Errorf("error moving tab: %w", err)
+	}
+	wcore.SendWaveObjUpdate(waveobj.ORef{OType: waveobj.OType_Workspace, OID: data.SourceWorkspaceId})
+	wcore.SendWaveObjUpdate(waveobj.ORef{OType: waveobj.OType_Workspace, OID: data.DestWorkspaceId})
+	if newSourceActiveTabId != "" {
+		wcore.SendActiveTabUpdate(ctx, data.SourceWorkspaceId, newSourceActiveTabId)
+	}
+	wcore.SendActiveTabUpdate(ctx, data.DestWorkspaceId, data.TabId)
+	return nil
+}
+
 func (ws *WshServer) SetMetaCommand(ctx context.Context, data wshrpc.CommandSetMetaData) error {
 	log.Printf("SetMetaCommand: %s | %v\n", data.ORef, data.Meta)
 	oref := data.ORef
@@ -453,7 +467,7 @@ func (ws *WshServer) WriteTempFileCommand(ctx context.Context, data wshrpc.Comma
 		return "", fmt.Errorf("error decoding base64 data: %w", err)
 	}
 	tempPath := filepath.Join(tempDir, name)
-	err = os.WriteFile(tempPath, decoded, 0600)
+	err = os.WriteFile(tempPath, decoded, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("error writing temp file: %w", err)
 	}
@@ -881,7 +895,8 @@ func (ws *WshServer) MacOSVersionCommand(ctx context.Context) (string, error) {
 // scope (current workspace by default).
 func (ws *WshServer) BlocksListCommand(
 	ctx context.Context,
-	req wshrpc.BlocksListRequest) ([]wshrpc.BlocksListEntry, error) {
+	req wshrpc.BlocksListRequest,
+) ([]wshrpc.BlocksListEntry, error) {
 	var results []wshrpc.BlocksListEntry
 
 	// Resolve the set of workspaces to inspect
@@ -1438,7 +1453,6 @@ func (ws *WshServer) PathCommand(ctx context.Context, data wshrpc.PathCommandDat
 			Ephemeral: true,
 			Focused:   true,
 		})
-
 		if err != nil {
 			return path, fmt.Errorf("error opening path: %w", err)
 		}

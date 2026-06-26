@@ -505,6 +505,13 @@ declare global {
         message: string;
     };
 
+    // wshrpc.CommandMoveTabData
+    type CommandMoveTabData = {
+        sourceworkspaceid: string;
+        destworkspaceid: string;
+        tabid: string;
+    };
+
     // wshrpc.CommandPublishAppData
     type CommandPublishAppData = {
         appid: string;

@@ -36,11 +36,42 @@ export function buildTabBarContextMenu(env: TabEnv): ContextMenuItem[] {
     return [{ label: "Tab Bar Position", type: "submenu", submenu: tabBarSubmenu }];
 }
 
+export type MoveTabTarget = {
+    workspaceId: string;
+    name: string;
+};
+
+// Resolves the workspaces a tab can be moved into: every workspace other than the current
+// one that is either saved (has a name) or currently open in a window.
+export async function getMoveTabTargets(env: TabEnv): Promise<MoveTabTarget[]> {
+    const currentWorkspaceId = globalStore.get(env.atoms.workspace)?.oid;
+    const list = await env.services.workspace.ListWorkspaces();
+    if (!list) {
+        return [];
+    }
+    const targets: MoveTabTarget[] = [];
+    for (const entry of list) {
+        if (entry.workspaceid === currentWorkspaceId) {
+            continue;
+        }
+        const ws = await env.services.workspace.GetWorkspace(entry.workspaceid);
+        if (!ws) {
+            continue;
+        }
+        if (!ws.name && !entry.windowid) {
+            continue;
+        }
+        targets.push({ workspaceId: ws.oid, name: ws.name });
+    }
+    return targets;
+}
+
 export function buildTabContextMenu(
     id: string,
     renameRef: React.RefObject<(() => void) | null>,
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void,
-    env: TabEnv
+    env: TabEnv,
+    moveTargets: MoveTabTarget[] = []
 ): ContextMenuItem[] {
     const menu: ContextMenuItem[] = [];
     menu.push(
@@ -115,6 +146,23 @@ export function buildTabContextMenu(
         menu.push({ label: "Backgrounds", type: "submenu", submenu }, { type: "separator" });
     }
     menu.push(...buildTabBarContextMenu(env), { type: "separator" });
+    const sourceWorkspaceId = globalStore.get(env.atoms.workspace)?.oid;
+    const tabCount = globalStore.get(env.atoms.workspace)?.tabids?.length ?? 0;
+    // can't move the last tab out of a workspace (would orphan its window)
+    if (moveTargets.length > 0 && tabCount > 1) {
+        const moveSubmenu: ContextMenuItem[] = moveTargets.map((t) => ({
+            label: t.name || "Untitled workspace",
+            click: () =>
+                fireAndForget(() =>
+                    env.rpc.MoveTabCommand(TabRpcClient, {
+                        sourceworkspaceid: sourceWorkspaceId,
+                        destworkspaceid: t.workspaceId,
+                        tabid: id,
+                    })
+                ),
+        }));
+        menu.push({ label: "Move to Workspace", type: "submenu", submenu: moveSubmenu }, { type: "separator" });
+    }
     menu.push({ label: "Close Tab", click: () => onClose(null) });
     return menu;
 }

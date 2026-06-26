@@ -15,7 +15,7 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useRef, 
 import { makeORef } from "../store/wos";
 import { TabBadges } from "./tabbadges";
 import "./tab.scss";
-import { buildTabContextMenu } from "./tabcontextmenu";
+import { buildTabContextMenu, getMoveTabTargets } from "./tabcontextmenu";
 
 export type TabEnv = WaveEnvSubset<{
     rpc: {
@@ -23,9 +23,14 @@ export type TabEnv = WaveEnvSubset<{
         SetConfigCommand: WaveEnv["rpc"]["SetConfigCommand"];
         SetMetaCommand: WaveEnv["rpc"]["SetMetaCommand"];
         UpdateTabNameCommand: WaveEnv["rpc"]["UpdateTabNameCommand"];
+        MoveTabCommand: WaveEnv["rpc"]["MoveTabCommand"];
     };
     atoms: {
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
+        workspace: WaveEnv["atoms"]["workspace"];
+    };
+    services: {
+        workspace: WaveEnv["services"]["workspace"];
     };
     wos: WaveEnv["wos"];
     getSettingsKeyAtom: WaveEnv["getSettingsKeyAtom"];
@@ -305,8 +310,14 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const handleContextMenu = useCallback(
         (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
             e.preventDefault();
-            const menu = buildTabContextMenu(id, renameRef, onClose, env);
-            env.showContextMenu(menu, e);
+            // capture the event up front since fetching move targets is async (React 19 events
+            // aren't pooled, but we keep the coordinates the menu needs from the original event)
+            const contextEvent = e;
+            fireAndForget(async () => {
+                const moveTargets = await getMoveTabTargets(env);
+                const menu = buildTabContextMenu(id, renameRef, onClose, env, moveTargets);
+                env.showContextMenu(menu, contextEvent);
+            });
         },
         [id, onClose, env]
     );

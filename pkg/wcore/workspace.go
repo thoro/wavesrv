@@ -373,6 +373,46 @@ func SendActiveTabUpdate(ctx context.Context, workspaceId string, newActiveTabId
 	})
 }
 
+// MoveTab moves a tab from one workspace to another. The tab's blocks (and their
+// running controllers) are preserved, since controllers are keyed by block id and the
+// Block/Tab objects carry no workspace back-reference. Returns the source workspace's
+// new active tab id (non-empty only when the moved tab was the active tab and a sibling
+// had to be activated in its place). The moved tab is made active in the destination.
+func MoveTab(ctx context.Context, sourceWorkspaceId string, destWorkspaceId string, tabId string) (string, error) {
+	if sourceWorkspaceId == destWorkspaceId {
+		return "", fmt.Errorf("source and destination workspaces are the same")
+	}
+	sourceWs, _ := wstore.DBGet[*waveobj.Workspace](ctx, sourceWorkspaceId)
+	if sourceWs == nil {
+		return "", fmt.Errorf("source workspace not found: %q", sourceWorkspaceId)
+	}
+	destWs, _ := wstore.DBGet[*waveobj.Workspace](ctx, destWorkspaceId)
+	if destWs == nil {
+		return "", fmt.Errorf("destination workspace not found: %q", destWorkspaceId)
+	}
+	tabIdx := utilfn.FindStringInSlice(sourceWs.TabIds, tabId)
+	if tabIdx == -1 {
+		return "", fmt.Errorf("tab %s not found in workspace %s", tabId, sourceWorkspaceId)
+	}
+	if len(sourceWs.TabIds) <= 1 {
+		return "", fmt.Errorf("cannot move the last tab out of a workspace")
+	}
+
+	sourceWs.TabIds = append(sourceWs.TabIds[:tabIdx], sourceWs.TabIds[tabIdx+1:]...)
+	newSourceActiveTabId := ""
+	if sourceWs.ActiveTabId == tabId {
+		newSourceActiveTabId = sourceWs.TabIds[max(0, min(tabIdx-1, len(sourceWs.TabIds)-1))]
+		sourceWs.ActiveTabId = newSourceActiveTabId
+	}
+
+	destWs.TabIds = append(destWs.TabIds, tabId)
+	destWs.ActiveTabId = tabId
+
+	wstore.DBUpdate(ctx, sourceWs)
+	wstore.DBUpdate(ctx, destWs)
+	return newSourceActiveTabId, nil
+}
+
 func UpdateWorkspaceTabIds(ctx context.Context, workspaceId string, tabIds []string) error {
 	ws, _ := wstore.DBGet[*waveobj.Workspace](ctx, workspaceId)
 	if ws == nil {

@@ -96,6 +96,7 @@ type WshRpcInterface interface {
 	GetTabCommand(ctx context.Context, tabId string) (*waveobj.Tab, error)
 	UpdateTabNameCommand(ctx context.Context, tabId string, newName string) error
 	UpdateWorkspaceTabIdsCommand(ctx context.Context, workspaceId string, tabIds []string) error
+	MoveTabCommand(ctx context.Context, data CommandMoveTabData) error
 	GetAllBadgesCommand(ctx context.Context) ([]baseds.BadgeEvent, error)
 
 	// connection functions
@@ -273,6 +274,12 @@ type CommandSetMetaData struct {
 	Meta waveobj.MetaMapType `json:"meta"`
 }
 
+type CommandMoveTabData struct {
+	SourceWorkspaceId string `json:"sourceworkspaceid"`
+	DestWorkspaceId   string `json:"destworkspaceid"`
+	TabId             string `json:"tabid"`
+}
+
 type CommandResolveIdsData struct {
 	BlockId string   `json:"blockid"`
 	Ids     []string `json:"ids"`
@@ -340,7 +347,6 @@ type CommandEventReadHistoryData struct {
 	Scope    string `json:"scope"`
 	MaxItems int    `json:"maxitems"`
 }
-
 
 type CpuDataRequest struct {
 	Id    string `json:"id"`
@@ -782,8 +788,7 @@ type CommandJobPrepareConnectData struct {
 	TermSize   waveobj.TermSize `json:"termsize"`
 }
 
-type CommandJobStartStreamData struct {
-}
+type CommandJobStartStreamData struct{}
 
 type CommandJobConnectRtnData struct {
 	Seq         int64  `json:"seq"`

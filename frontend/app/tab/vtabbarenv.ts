@@ -16,6 +16,7 @@ export type VTabBarEnv = WaveEnvSubset<{
     rpc: {
         UpdateWorkspaceTabIdsCommand: WaveEnv["rpc"]["UpdateWorkspaceTabIdsCommand"];
         UpdateTabNameCommand: WaveEnv["rpc"]["UpdateTabNameCommand"];
+        MoveTabCommand: WaveEnv["rpc"]["MoveTabCommand"];
         ActivityCommand: WaveEnv["rpc"]["ActivityCommand"];
         SetConfigCommand: WaveEnv["rpc"]["SetConfigCommand"];
         SetMetaCommand: WaveEnv["rpc"]["SetMetaCommand"];
