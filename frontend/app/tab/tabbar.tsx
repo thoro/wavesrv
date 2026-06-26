@@ -109,6 +109,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const tabRefs = useRef<React.RefObject<HTMLDivElement>[]>([]);
     const addBtnRef = useRef<HTMLButtonElement>(null);
     const draggingRemovedRef = useRef(false);
+    const lastDragArmRef = useRef(0);
     const draggingTabDataRef = useRef({
         tabId: "",
         ref: { current: null },
@@ -371,8 +372,29 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         return newTabIndex;
     };
 
+    const abandonDrag = () => {
+        tabRefs.current.forEach((ref) => {
+            if (ref.current) {
+                ref.current.style.zIndex = "0";
+                ref.current.classList.remove("animate");
+            }
+        });
+        setDraggingTab(null);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.removeEventListener("mousemove", handleMouseMove);
+        draggingRemovedRef.current = false;
+    };
+
     const handleMouseMove = (event: MouseEvent) => {
         const { tabId, ref, tabStartX } = draggingTabDataRef.current;
+
+        // Self-heal: if the dragged tab's DOM node is gone (e.g. it was dropped onto another
+        // workspace window and this window re-rendered without it), abort and detach so the
+        // stale listeners can't act on a removed node.
+        if (ref?.current == null || !ref.current.isConnected) {
+            abandonDrag();
+            return;
+        }
 
         let initialOffsetX = draggingTabDataRef.current.initialOffsetX;
         let totalScrollOffset = draggingTabDataRef.current.totalScrollOffset;
@@ -419,6 +441,14 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         // Check if the tab has moved 5 pixels
         if (Math.abs(currentX - tabStartX) >= 50) {
             draggingTabDataRef.current.dragged = true;
+            // Arm the cross-window drag handoff (throttled). Re-arming keeps the timestamp
+            // fresh so a window the tab is dropped on can distinguish an active drag from a
+            // stale entry left by a drop released over the desktop.
+            const now = Date.now();
+            if (now - lastDragArmRef.current > 100) {
+                lastDragArmRef.current = now;
+                env.electron.setPendingTabDrag(workspace.oid, tabId);
+            }
         }
 
         // Constrain movement within the container bounds
@@ -516,6 +546,8 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         document.removeEventListener("mouseup", handleMouseUp);
         document.removeEventListener("mousemove", handleMouseMove);
         draggingRemovedRef.current = false;
+        // the drop landed in this window, so cancel any armed cross-window handoff
+        env.electron.clearPendingTabDrag();
     };
 
     const handleDragStart = useCallback(

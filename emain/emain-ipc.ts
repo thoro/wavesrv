@@ -32,6 +32,13 @@ const electronApp = electron.app;
 let webviewFocusId: number = null;
 let webviewKeys: string[] = [];
 
+// Cross-window tab drag handoff: the source window arms this when a tab drag is in
+// progress; the window the tab is dropped on reads it on mouseup to complete the move.
+// The timestamp guards against a stale entry triggering a spurious move on an unrelated
+// click (a drop released over the desktop never clears the entry).
+type PendingTabDrag = { sourceworkspaceid: string; tabid: string; ts: number };
+let pendingTabDrag: PendingTabDrag = null;
+
 export function openBuilderWindow(appId?: string) {
     const normalizedAppId = appId || "";
     const existingBuilderWindows = getAllBuilderWindows();
@@ -264,6 +271,18 @@ export function initIpcHandlers() {
             y: screenPoint.y - windowRect.y,
         };
         event.returnValue = retVal;
+    });
+
+    electron.ipcMain.on("set-pending-tab-drag", (_event, sourceWorkspaceId: string, tabId: string) => {
+        pendingTabDrag = { sourceworkspaceid: sourceWorkspaceId, tabid: tabId, ts: Date.now() };
+    });
+
+    electron.ipcMain.on("clear-pending-tab-drag", () => {
+        pendingTabDrag = null;
+    });
+
+    electron.ipcMain.handle("get-pending-tab-drag", () => {
+        return pendingTabDrag;
     });
 
     electron.ipcMain.handle("capture-screenshot", async (event, rect) => {
