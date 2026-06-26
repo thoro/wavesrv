@@ -380,6 +380,10 @@ export class TermWrap {
     }
 
     async initTerminal() {
+        const perfT0 = performance.now();
+        const blockTag = this.blockId.slice(0, 8);
+        const perfMark = (label: string) =>
+            console.log(`[perf] term ${blockTag} ${label}: +${(performance.now() - perfT0).toFixed(0)}ms`);
         const copyOnSelectAtom = getSettingsKeyAtom("term:copyonselect");
         const trimTrailingWhitespaceAtom = getSettingsKeyAtom("term:trimtrailingwhitespace");
         this.toDispose.push(this.terminal.onData(this.handleTermData.bind(this)));
@@ -432,12 +436,14 @@ export class TermWrap {
         } catch (e) {
             console.log("Error loading runtime info:", e);
         }
+        perfMark("rtInfo loaded");
 
         try {
             await this.loadInitialTerminalData();
         } finally {
             this.loaded = true;
         }
+        perfMark("initial data loaded");
         this.runProcessIdleTimeout();
     }
 
@@ -554,6 +560,7 @@ export class TermWrap {
 
     async resyncController(reason: string) {
         dlog("resync controller", this.blockId, reason);
+        const perfT0 = performance.now();
         const rtOpts: RuntimeOpts = { termsize: { rows: this.terminal.rows, cols: this.terminal.cols } };
         try {
             await RpcApi.ControllerResyncCommand(TabRpcClient, {
@@ -561,6 +568,9 @@ export class TermWrap {
                 blockid: this.blockId,
                 rtopts: rtOpts,
             });
+            console.log(
+                `[perf] term ${this.blockId.slice(0, 8)} controllerResync (${reason}): ${(performance.now() - perfT0).toFixed(0)}ms`
+            );
         } catch (e) {
             console.log(`error controller resync (${reason})`, this.blockId, e);
         }

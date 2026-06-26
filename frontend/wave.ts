@@ -141,6 +141,8 @@ function loadAllWorkspaceTabs(ws: Workspace) {
 }
 
 async function initWave(initOpts: WaveInitOpts) {
+    const perfT0 = performance.now();
+    const perfMark = (label: string) => console.log(`[perf] initWave ${label}: +${(performance.now() - perfT0).toFixed(0)}ms`);
     getApi().sendLog("Init Wave " + JSON.stringify(initOpts));
     const globalInitOpts: GlobalInitOptions = {
         tabId: initOpts.tabId,
@@ -155,6 +157,7 @@ async function initWave(initOpts: WaveInitOpts) {
     await GlobalModel.getInstance().initialize(globalInitOpts);
     initGlobal(globalInitOpts);
     (window as any).globalAtoms = atoms;
+    perfMark("global initialized");
 
     // Init WPS event handlers
     const globalWS = initWshrpc(makeTabRouteId(initOpts.tabId));
@@ -164,22 +167,27 @@ async function initWave(initOpts: WaveInitOpts) {
     // ensures client/window/workspace are loaded into the cache before rendering
     try {
         await loadConnStatus();
+        perfMark("connStatus loaded");
         await loadBadges();
+        perfMark("badges loaded");
         initGlobalWaveEventSubs(initOpts);
         subscribeToConnEvents();
         if (isMacOS()) {
             const macOSVersion = await RpcApi.MacOSVersionCommand(TabRpcClient);
             setMacOSVersion(macOSVersion);
+            perfMark("macOSVersion loaded");
         }
         const [_client, waveWindow, initialTab] = await Promise.all([
             WOS.loadAndPinWaveObject<Client>(WOS.makeORef("client", initOpts.clientId)),
             WOS.loadAndPinWaveObject<WaveWindow>(WOS.makeORef("window", initOpts.windowId)),
             WOS.loadAndPinWaveObject<Tab>(WOS.makeORef("tab", initOpts.tabId)),
         ]);
+        perfMark("client/window/tab loaded");
         const [ws, _layoutState] = await Promise.all([
             WOS.loadAndPinWaveObject<Workspace>(WOS.makeORef("workspace", waveWindow.workspaceid)),
             WOS.reloadWaveObject<LayoutState>(WOS.makeORef("layout", initialTab.layoutstate)),
         ]);
+        perfMark("workspace/layout loaded");
         loadAllWorkspaceTabs(ws);
         WOS.wpsSubscribeToObject(WOS.makeORef("workspace", waveWindow.workspaceid));
         document.title = `Wave Terminal - ${initialTab.name}`; // TODO update with tab name change
@@ -191,11 +199,14 @@ async function initWave(initOpts: WaveInitOpts) {
     registerElectronReinjectKeyHandler();
     registerControlShiftStateUpdateHandler();
     await loadMonaco();
+    perfMark("monaco loaded");
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
     console.log("fullconfig", fullConfig);
     globalStore.set(atoms.fullConfigAtom, fullConfig);
+    perfMark("fullConfig loaded");
     const waveaiModeConfig = await RpcApi.GetWaveAIModeConfigCommand(TabRpcClient);
     globalStore.set(atoms.waveaiModeConfigAtom, waveaiModeConfig.configs);
+    perfMark("waveAIModeConfig loaded (pre-render)");
     console.log("Wave First Render");
     let firstRenderResolveFn: () => void = null;
     const firstRenderPromise = new Promise<void>((resolve) => {
@@ -206,6 +217,7 @@ async function initWave(initOpts: WaveInitOpts) {
     const root = createRoot(elem);
     root.render(reactElem);
     await firstRenderPromise;
+    perfMark("first render done");
     console.log("Wave First Render Done");
     getApi().setWindowInitStatus("wave-ready");
 }
