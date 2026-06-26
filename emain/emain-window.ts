@@ -458,23 +458,21 @@ export class WaveBrowserWindow extends BaseWindow {
         if (!isDev) {
             return promise;
         }
-        let timeoutHandle: ReturnType<typeof setTimeout> = null;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutHandle = setTimeout(() => {
-                console.log(
-                    `[dev] ${name} timed out after ${DevInitTimeoutMs}ms for tab ${tabId}, showing window for devtools`
-                );
-                if (!this.isDestroyed() && !this.isVisible()) {
-                    this.show();
-                }
-                if (this.activeTabView?.webContents && !this.activeTabView.webContents.isDevToolsOpened()) {
-                    this.activeTabView.webContents.openDevTools();
-                }
-                reject(new Error(`[dev] ${name} timed out after ${DevInitTimeoutMs}ms`));
-            }, DevInitTimeoutMs);
-        });
+        // Non-fatal: if init is slow (cold Vite dev load can exceed 30s), surface the window +
+        // devtools so it can be inspected, but keep awaiting the real promise so init still
+        // completes once the renderer is ready. Rejecting here would abort the wave-init
+        // handshake and leave a permanently blank, unmovable window.
+        const timeoutHandle = setTimeout(() => {
+            console.log(`[dev] ${name} slow (>${DevInitTimeoutMs}ms) for tab ${tabId}, showing window for devtools`);
+            if (!this.isDestroyed() && !this.isVisible()) {
+                this.show();
+            }
+            if (this.activeTabView?.webContents && !this.activeTabView.webContents.isDevToolsOpened()) {
+                this.activeTabView.webContents.openDevTools();
+            }
+        }, DevInitTimeoutMs);
         try {
-            return await Promise.race([promise, timeoutPromise]);
+            return await promise;
         } finally {
             clearTimeout(timeoutHandle);
         }
