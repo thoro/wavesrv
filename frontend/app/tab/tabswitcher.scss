@@ -1,0 +1,100 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+.tab-switcher-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--zindex-typeahead-modal-backdrop);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 12vh;
+}
+
+.tab-switcher-content {
+    z-index: var(--zindex-typeahead-modal);
+    display: flex;
+    flex-direction: column;
+    width: 460px;
+    max-width: calc(100vw - 40px);
+    max-height: 60vh;
+    padding: 8px;
+    background-color: var(--modal-bg-color);
+    border: 1px solid var(--modal-border-color);
+    border-radius: 8px;
+    box-shadow: 0px 8px 24px 0px var(--modal-shadow-color);
+
+    .tab-switcher-search {
+        width: 100%;
+        margin-bottom: 6px;
+        padding: 6px 10px;
+        font-size: 14px;
+        line-height: 20px;
+        color: var(--main-text-color);
+        background-color: rgb(from var(--main-text-color) r g b / 0.07);
+        border: 1px solid var(--modal-border-color);
+        border-radius: 4px;
+        outline: none;
+
+        &:focus {
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--secondary-text-color);
+        }
+    }
+
+    .scrollable {
+        width: 100%;
+        max-height: calc(60vh - 60px);
+    }
+
+    .tab-switcher-empty {
+        padding: 8px 10px;
+        font-size: 13px;
+        color: var(--secondary-text-color);
+    }
+
+    .tab-switcher-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        font-size: 13px;
+        line-height: 18px;
+        color: var(--main-text-color);
+        border-radius: 4px;
+        cursor: pointer;
+
+        .flag-icon,
+        .flag-icon-placeholder {
+            width: 14px;
+            flex-shrink: 0;
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .tab-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+
+            .match {
+                color: var(--accent-color);
+                font-weight: 600;
+            }
+        }
+
+        .active-check {
+            flex-shrink: 0;
+            font-size: 11px;
+            color: var(--secondary-text-color);
+        }
+
+        &.keyboard-selected {
+            background-color: rgb(from var(--main-text-color) r g b / 0.1);
+        }
+    }
+}

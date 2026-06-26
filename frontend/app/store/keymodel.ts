@@ -21,6 +21,7 @@ import {
     WOS,
 } from "@/app/store/global";
 import { getActiveTabModel } from "@/app/store/tab-model";
+import { tabSwitcherOpenAtom } from "@/app/tab/tabswitcher";
 import { workspaceSwitcherOpenAtom } from "@/app/tab/workspaceswitcher";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { deleteLayoutModelForTab, getLayoutModelForStaticTab, NavigateDirection } from "@/layout/index";
@@ -450,7 +451,7 @@ function appHandleKeyDown(waveEvent: WaveKeyboardEvent): boolean {
             return true;
         }
     }
-    if (isTabWindow() && !globalStore.get(workspaceSwitcherOpenAtom)) {
+    if (isTabWindow() && !globalStore.get(workspaceSwitcherOpenAtom) && !globalStore.get(tabSwitcherOpenAtom)) {
         const layoutModel = getLayoutModelForStaticTab();
         const focusedNode = globalStore.get(layoutModel.focusedNode);
         const blockId = focusedNode?.data?.blockId;
@@ -559,6 +560,10 @@ function registerGlobalKeys() {
     });
     globalKeyMap.set("Cmd:Shift:o", () => {
         globalStore.set(workspaceSwitcherOpenAtom, true);
+        return true;
+    });
+    globalKeyMap.set("Cmd:Shift:k", () => {
+        globalStore.set(tabSwitcherOpenAtom, true);
         return true;
     });
     globalKeyMap.set("Cmd:m", () => {
