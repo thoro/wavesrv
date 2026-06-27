@@ -569,7 +569,9 @@ export class WaveBrowserWindow extends BaseWindow {
                 webviewTag: true,
             },
         });
-        this.chromeView.setBackgroundColor("#1f211f");
+        // transparent so that when the chrome view is expanded over the content (to show a popover
+        // without clipping), the content shows through the non-popover areas
+        this.chromeView.setBackgroundColor("#00000000");
         this.contentView.addChildView(this.chromeView);
         this.positionChromeView();
         void this.loadChromeView();
@@ -601,6 +603,24 @@ export class WaveBrowserWindow extends BaseWindow {
         }
         const cb = this.getContentBounds();
         this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: ChromeStripHeight });
+    }
+
+    // Auto-expand: while a chrome popover (workspace switcher, etc.) is open, grow the chrome view
+    // to cover the whole window and raise it above the content so the popover renders over the
+    // content instead of clipping at the strip height. Collapse back to the strip when it closes.
+    setChromeOverlay(overlay: boolean) {
+        if (this.chromeView == null || this.isDestroyed()) {
+            return;
+        }
+        if (!overlay) {
+            this.positionChromeView();
+            return;
+        }
+        // re-add to raise above the content views, then cover the full content area
+        this.contentView.removeChildView(this.chromeView);
+        this.contentView.addChildView(this.chromeView);
+        const cb = this.getContentBounds();
+        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: cb.height });
     }
 
     async queueCreateTab() {
@@ -830,6 +850,11 @@ ipcMain.on("set-active-tab", async (event, tabId) => {
     const ww = getWaveWindowByWebContentsId(event.sender.id);
     console.log("set-active-tab", tabId, ww?.waveWindowId);
     await ww?.setActiveTab(tabId, true);
+});
+
+ipcMain.on("set-chrome-overlay", (event, overlay: boolean) => {
+    const ww = getWaveWindowByWebContentsId(event.sender.id);
+    ww?.setChromeOverlay(overlay);
 });
 
 ipcMain.on("create-tab", async (event, _opts) => {

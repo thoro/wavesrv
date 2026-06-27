@@ -1,9 +1,19 @@
 // Copyright 2026, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// The chrome renderer is transparent below the strip so that when the chrome view is expanded over
+// the content (to show a popover), the content shows through. (Keep height in sync with
+// ChromeStripHeight in emain/emain-tabview.ts.)
+body.chrome-window,
+body.chrome-window #main {
+    background-color: transparent !important;
+}
+
 // Mirrors the original tab bar look (tab.scss / tabbar.scss): blackish translucent bar, centered
 // grey tab labels, subtle white overlay on hover/active, white active label, close on hover.
 .chrome-strip {
+    height: 36px;
+    flex-shrink: 0;
     background: rgba(0, 0, 0, 0.35);
     user-select: none;
 

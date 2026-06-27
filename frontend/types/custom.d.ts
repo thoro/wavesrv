@@ -132,6 +132,7 @@ declare global {
         onWaveInit: (callback: (initOpts: WaveInitOpts) => void) => void; // wave-init
         onBuilderInit: (callback: (initOpts: BuilderInitOpts) => void) => void; // builder-init
         onChromeInit: (callback: (initOpts: ChromeInitOpts) => void) => void; // chrome-init
+        setChromeOverlay: (overlay: boolean) => void; // set-chrome-overlay
         sendLog: (log: string) => void; // fe-log
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path

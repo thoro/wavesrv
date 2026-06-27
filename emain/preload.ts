@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("api", {
     onWaveInit: (callback) => ipcRenderer.on("wave-init", (_event, initOpts) => callback(initOpts)),
     onBuilderInit: (callback) => ipcRenderer.on("builder-init", (_event, initOpts) => callback(initOpts)),
     onChromeInit: (callback) => ipcRenderer.on("chrome-init", (_event, initOpts) => callback(initOpts)),
+    setChromeOverlay: (overlay) => ipcRenderer.send("set-chrome-overlay", overlay),
     sendLog: (log) => ipcRenderer.send("fe-log", log),
     onQuicklook: (filePath: string) => ipcRenderer.send("quicklook", filePath),
     openNativePath: (filePath: string) => ipcRenderer.send("open-native-path", filePath),

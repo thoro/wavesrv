@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalStore } from "@/app/store/jotaiStore";
-import { WorkspaceSwitcher } from "@/app/tab/workspaceswitcher";
+import { WorkspaceSwitcher, workspaceSwitcherOpenAtom } from "@/app/tab/workspaceswitcher";
 import { useWaveEnv, WaveEnvContext } from "@/app/waveenv/waveenv";
 import { makeWaveEnvImpl } from "@/app/waveenv/waveenvimpl";
 import { atoms, getApi } from "@/store/global";
@@ -38,11 +38,16 @@ const ChromeContent = () => {
     const workspace = useAtomValue(atoms.workspace);
     const tabIds = workspace?.tabids ?? [];
     const activeTabId = workspace?.activetabid;
+    // grow/shrink the chrome view (via emain) while a popover is open so it isn't clipped by the strip
+    const wsSwitcherOpen = useAtomValue(workspaceSwitcherOpenAtom);
+    useEffect(() => {
+        getApi().setChromeOverlay(wsSwitcherOpen);
+    }, [wsSwitcherOpen]);
     // the strip itself is a window-drag region; interactive children opt out with no-drag, and the
     // empty area to the right of the tabs stays draggable for moving the window
     return (
         <div
-            className={cn("chrome-strip flex h-full w-full items-center gap-2 overflow-hidden px-2", isMacOS() ? "pl-[78px]" : "")}
+            className={cn("chrome-strip flex w-full items-center gap-2 overflow-hidden px-2", isMacOS() ? "pl-[78px]" : "")}
             style={DragRegion}
         >
             <div className="shrink-0" style={NoDragRegion}>

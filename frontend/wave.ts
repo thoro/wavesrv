@@ -243,6 +243,8 @@ async function initChromeWrap(initOpts: ChromeInitOpts) {
 // setup (the tab content renderers own those).
 async function initChrome(initOpts: ChromeInitOpts) {
     getApi().sendLog("Init Chrome " + JSON.stringify(initOpts));
+    // the chrome renderer is transparent below the strip (so an expanded popover shows the content)
+    document.body.classList.add("chrome-window");
     const globalInitOpts: GlobalInitOptions = {
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,
