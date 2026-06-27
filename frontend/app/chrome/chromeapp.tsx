@@ -48,12 +48,12 @@ const ChromeContent = () => {
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const aiOpen = useAtomValue(chromeWaveAIOpenAtom);
     const loading = useAtomValue(chromeLoadingAtom);
-    // grow/shrink the chrome view (via emain) while a popover is open or the active tab is loading,
-    // so the popover / loading spinner can render over the content instead of clipping at the strip
+    // foreground the chrome view while a popover is open (emain foregrounds it for loading on its
+    // own); the spinner below is rendered when `loading` and shown because emain has foregrounded it
     const wsSwitcherOpen = useAtomValue(workspaceSwitcherOpenAtom);
     useEffect(() => {
-        getApi().setChromeOverlay(wsSwitcherOpen || loading);
-    }, [wsSwitcherOpen, loading]);
+        getApi().setChromeOverlay(wsSwitcherOpen);
+    }, [wsSwitcherOpen]);
     // the strip itself is a window-drag region; interactive children opt out with no-drag, and the
     // empty area to the right of the tabs stays draggable for moving the window
     return (

@@ -164,6 +164,10 @@ export class WaveBrowserWindow extends BaseWindow {
     activeTabView: WaveTabView;
     chromeView: WebContentsView;
     chromeSavedInitOpts: ChromeInitOpts;
+    // the chrome view is always full-window; these track whether it should sit ABOVE the content
+    // (foreground) to show the loading spinner / a popover, vs behind it (background)
+    chromeLoadingActive: boolean = false;
+    chromePopoverActive: boolean = false;
     private canClose: boolean;
     private deleteAllowed: boolean;
     private actionQueue: WindowActionQueueEntry[];
@@ -599,12 +603,31 @@ export class WaveBrowserWindow extends BaseWindow {
         }
     }
 
+    // the chrome view always covers the whole window; only its z-order changes. Its top strip
+    // (ChromeStripHeight) is the tab bar; the rest of the renderer is transparent. In the
+    // background the content view (positioned below the strip) covers the transparent area; only
+    // the tab bar shows. Foregrounded, the transparent area + popover/spinner render over content.
     private positionChromeView() {
         if (this.chromeView == null || this.isDestroyed()) {
             return;
         }
         const cb = this.getContentBounds();
-        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: ChromeStripHeight });
+        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: cb.height });
+    }
+
+    // raise the chrome view above the content (foreground) when a popover is open or the active tab
+    // is loading; otherwise send it behind the content (background, only the tab bar visible)
+    private applyChromeZOrder() {
+        if (this.chromeView == null || this.isDestroyed()) {
+            return;
+        }
+        const foreground = this.chromeLoadingActive || this.chromePopoverActive;
+        this.contentView.removeChildView(this.chromeView);
+        if (foreground) {
+            this.contentView.addChildView(this.chromeView);
+        } else {
+            this.contentView.addChildView(this.chromeView, 0);
+        }
     }
 
     // push the active tab's AI-panel open state to the chrome strip (so its AI button highlights)
@@ -616,31 +639,22 @@ export class WaveBrowserWindow extends BaseWindow {
     }
 
     // tell the chrome strip whether the active tab's renderer is still loading, so it can show a
-    // loading spinner over the (blank) content area while staying interactive itself
+    // loading spinner over the (blank) content area; foreground the chrome view while loading
     updateChromeLoading() {
         if (this.chromeView == null || this.isDestroyed()) {
             return;
         }
         const loading = this.activeTabView != null && !this.activeTabView.isWaveReady;
+        this.chromeLoadingActive = loading;
         this.chromeView.webContents.send("chrome-loading", loading);
+        this.applyChromeZOrder();
     }
 
-    // Auto-expand: while a chrome popover (workspace switcher, etc.) is open, grow the chrome view
-    // to cover the whole window and raise it above the content so the popover renders over the
-    // content instead of clipping at the strip height. Collapse back to the strip when it closes.
+    // foreground the chrome view while a popover (workspace switcher, etc.) is open so it renders
+    // over the content; background it again on close
     setChromeOverlay(overlay: boolean) {
-        if (this.chromeView == null || this.isDestroyed()) {
-            return;
-        }
-        if (!overlay) {
-            this.positionChromeView();
-            return;
-        }
-        // re-add to raise above the content views, then cover the full content area
-        this.contentView.removeChildView(this.chromeView);
-        this.contentView.addChildView(this.chromeView);
-        const cb = this.getContentBounds();
-        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: cb.height });
+        this.chromePopoverActive = overlay;
+        this.applyChromeZOrder();
     }
 
     async queueCreateTab() {
