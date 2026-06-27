@@ -450,8 +450,16 @@ export class WaveBrowserWindow extends BaseWindow {
             primaryStartupTab ? "(primary startup)" : ""
         );
         tabView.webContents.send("wave-init", initOpts);
-        await this.awaitWithDevTimeout(tabView.waveReadyPromise, "waveReadyPromise", tabView.waveTabId);
-        console.log("wave-ready init time", Date.now() - startTime + "ms");
+        // Don't block the tab switch on the full wave-init handshake + first render. The caller
+        // positions/shows the view as soon as this returns; the renderer keeps its body hidden
+        // (initBare) until ready, so the tab shows the themed background and then fills in. This
+        // keeps new tabs responsive instead of waiting on the renderer boot before appearing.
+        void this.awaitWithDevTimeout(tabView.waveReadyPromise, "waveReadyPromise", tabView.waveTabId).then(
+            () => {
+                console.log("wave-ready init time", Date.now() - startTime + "ms");
+            },
+            () => {}
+        );
     }
 
     private async awaitWithDevTimeout<T>(promise: Promise<T>, name: string, tabId: string): Promise<T> {
