@@ -12,7 +12,7 @@ import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
-import { moveTabToWorkspaceAtPoint, WaveTabDragType } from "./crosswindowmove";
+import { moveTabToWorkspaceAtPoint, setTabDragImage, WaveTabDragType } from "./crosswindowmove";
 import { Tab } from "./tab";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
@@ -326,7 +326,7 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         event.dataTransfer.setData("text/plain", tabId);
         event.dataTransfer.setData(WaveTabDragType, tabId);
         // float a snapshot of the tab under the cursor while dragging (incl. across windows)
-        event.dataTransfer.setDragImage(event.currentTarget, event.nativeEvent.offsetX, event.nativeEvent.offsetY);
+        setTabDragImage(event);
         setDraggingTab(tabId);
     };
 
