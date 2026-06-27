@@ -4,6 +4,7 @@
 import { globalStore } from "@/app/store/jotaiStore";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
 import { moveTabToWorkspaceAtPoint, setTabDragImage, WaveTabDragType } from "@/app/tab/crosswindowmove";
+import { buildTabContextMenu, getMoveTabTargets } from "@/app/tab/tabcontextmenu";
 import { WorkspaceSwitcher, workspaceSwitcherOpenAtom } from "@/app/tab/workspaceswitcher";
 import { useWaveEnv, WaveEnvContext } from "@/app/waveenv/waveenv";
 import { makeWaveEnvImpl } from "@/app/waveenv/waveenvimpl";
@@ -208,29 +209,86 @@ const ChromeTab = ({
     const env = useWaveEnv();
     const [tabData] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", tabId));
     const name = tabData?.name ?? "";
+    const [editing, setEditing] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+    // buildTabContextMenu's "Rename Tab" item calls renameRef -> start inline rename
+    const renameRef = useRef<() => void>(null);
+    renameRef.current = () => setEditing(true);
+
+    useEffect(() => {
+        if (editing) {
+            inputRef.current?.focus();
+            inputRef.current?.select();
+        }
+    }, [editing]);
+
+    const closeTab = () => fireAndForget(() => getApi().closeTab(workspaceId, tabId, false));
+    const commitRename = () => {
+        const newName = inputRef.current?.value?.trim();
+        setEditing(false);
+        if (newName && newName !== name) {
+            fireAndForget(() => env.rpc.UpdateTabNameCommand(TabRpcClient, tabId, newName));
+        }
+    };
+    const handleContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        const contextEvent = event;
+        fireAndForget(async () => {
+            const moveTargets = await getMoveTabTargets(env);
+            const menu = buildTabContextMenu(tabId, renameRef, () => closeTab(), env, moveTargets);
+            env.showContextMenu(menu, contextEvent);
+        });
+    };
+
     return (
         <div
             className={cn("chrome-tab", { active, dragging: isDragging })}
-            draggable
-            onClick={() => getApi().setActiveTab(tabId)}
+            draggable={!editing}
+            onClick={() => {
+                if (!editing) {
+                    getApi().setActiveTab(tabId);
+                }
+            }}
             onDragStart={onTabDragStart}
             onDragOver={onTabDragOver}
             onDrop={onTabDrop}
             onDragEnd={onTabDragEnd}
+            onContextMenu={handleContextMenu}
         >
             <div className="chrome-tab-inner">
-                <span className="chrome-tab-name">{name}</span>
-                <button
-                    type="button"
-                    className="chrome-tab-close"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        fireAndForget(() => getApi().closeTab(workspaceId, tabId, false));
-                    }}
-                    title="Close Tab"
-                >
-                    <i className="fa fa-solid fa-xmark" />
-                </button>
+                {editing ? (
+                    <input
+                        ref={inputRef}
+                        className="chrome-tab-rename"
+                        defaultValue={name}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                e.preventDefault();
+                                commitRename();
+                            } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setEditing(false);
+                            }
+                        }}
+                        onBlur={commitRename}
+                    />
+                ) : (
+                    <>
+                        <span className="chrome-tab-name">{name}</span>
+                        <button
+                            type="button"
+                            className="chrome-tab-close"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                closeTab();
+                            }}
+                            title="Close Tab"
+                        >
+                            <i className="fa fa-solid fa-xmark" />
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     );

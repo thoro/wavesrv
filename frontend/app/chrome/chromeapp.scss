@@ -123,6 +123,18 @@ body.chrome-window #main {
         &.dragging {
             opacity: 0.4;
         }
+
+        .chrome-tab-rename {
+            width: calc(100% - 12px);
+            height: 18px;
+            border: none;
+            outline: none;
+            background: rgb(from var(--main-bg-color) r g b / 0.6);
+            color: var(--main-text-color);
+            text-align: center;
+            font-size: 11px;
+            border-radius: 4px;
+        }
     }
 
     .chrome-newtab {
