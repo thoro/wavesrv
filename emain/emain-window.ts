@@ -26,7 +26,7 @@ import {
     setWasInFg,
 } from "./emain-activity";
 import { log } from "./emain-log";
-import { getElectronAppBasePath, isDev, unamePlatform } from "./emain-platform";
+import { getElectronAppBasePath, isDev, isDevVite, unamePlatform } from "./emain-platform";
 import { ChromeStripHeight, getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
 import { delay, ensureBoundsAreVisible, waveKeyToElectronKey } from "./emain-util";
 import { ElectronWshClient } from "./emain-wsh";
@@ -163,6 +163,7 @@ export class WaveBrowserWindow extends BaseWindow {
     allLoadedTabViews: Map<string, WaveTabView>;
     activeTabView: WaveTabView;
     chromeView: WebContentsView;
+    chromeSavedInitOpts: ChromeInitOpts;
     private canClose: boolean;
     private deleteAllowed: boolean;
     private actionQueue: WindowActionQueueEntry[];
@@ -557,17 +558,40 @@ export class WaveBrowserWindow extends BaseWindow {
         }
     }
 
-    // Phase 0 (persistent chrome renderer): a placeholder chrome strip pinned to the top of the
-    // window that does NOT swap on tab switch. The real tab bar / workspace switcher will render
-    // here in a later phase; for now it validates the two-view layout (strip + content below).
+    // Persistent chrome renderer: a chrome WebContentsView pinned to the top of the window that
+    // does NOT swap on tab switch. It loads the renderer in "chrome" mode (initChrome → ChromeApp)
+    // to render the tab bar + workspace switcher window-scoped; tab content views sit below it.
     private createChromeView() {
-        this.chromeView = new WebContentsView();
+        this.chromeView = new WebContentsView({
+            webPreferences: {
+                preload: path.join(getElectronAppBasePath(), "preload", "index.cjs"),
+                webviewTag: true,
+            },
+        });
         this.chromeView.setBackgroundColor("#1f211f");
-        this.chromeView.webContents.loadURL(
-            "data:text/html,<body style='margin:0;background:%231f211f;color:%23888888;font:12px -apple-system,sans-serif;display:flex;align-items:center;height:100vh;padding-left:90px'>persistent chrome (placeholder)</body>"
-        );
         this.contentView.addChildView(this.chromeView);
         this.positionChromeView();
+        void this.loadChromeView();
+    }
+
+    // Loads the chrome renderer. clientId is resolved BEFORE loadURL so chromeSavedInitOpts is
+    // populated before the renderer signals "ready" (the set-window-init-status handler also
+    // guards on clientId, so a slow resolve can't send an empty chrome-init).
+    private async loadChromeView() {
+        try {
+            const clientId = await getClientId();
+            if (this.isDestroyed() || this.chromeView == null) {
+                return;
+            }
+            this.chromeSavedInitOpts = { clientId, windowId: this.waveWindowId };
+            if (isDevVite) {
+                this.chromeView.webContents.loadURL(`${process.env.ELECTRON_RENDERER_URL}/index.html`);
+            } else {
+                this.chromeView.webContents.loadFile(path.join(getElectronAppBasePath(), "frontend", "index.html"));
+            }
+        } catch (e) {
+            console.log("error loading chrome view", e);
+        }
     }
 
     private positionChromeView() {
@@ -731,6 +755,13 @@ export function getWaveWindowByTabId(tabId: string): WaveBrowserWindow {
 export function getWaveWindowByWebContentsId(webContentsId: number): WaveBrowserWindow {
     if (webContentsId == null) {
         return null;
+    }
+    // a chrome renderer's webContents resolves to its owning window (so set-active-tab,
+    // create-tab, etc. sent from the chrome strip find the window)
+    for (const ww of waveWindowMap.values()) {
+        if (ww.chromeView?.webContents?.id === webContentsId) {
+            return ww;
+        }
     }
     const tabView = getWaveTabViewByWebContentsId(webContentsId);
     if (tabView == null) {

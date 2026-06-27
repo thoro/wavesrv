@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { App } from "@/app/app";
+import { ChromeApp } from "@/app/chrome/chromeapp";
 import { loadMonaco } from "@/app/monaco/monaco-env";
 import { loadBadges } from "@/app/store/badge";
 import { GlobalModel } from "@/app/store/global-model";
@@ -14,7 +15,7 @@ import {
 } from "@/app/store/keymodel";
 import { modalsModel } from "@/app/store/modalmodel";
 import { RpcApi } from "@/app/store/wshclientapi";
-import { makeBuilderRouteId, makeTabRouteId } from "@/app/store/wshrouter";
+import { makeBuilderRouteId, makeTabRouteId, makeWindowRouteId } from "@/app/store/wshrouter";
 import { initWshrpc, TabRpcClient } from "@/app/store/wshrpcutil";
 import { BuilderApp } from "@/builder/builder-app";
 import { getLayoutModelForStaticTab } from "@/layout/index";
@@ -63,6 +64,7 @@ async function initBare() {
     document.body.classList.add("is-transparent");
     getApi().onWaveInit(initWaveWrap);
     getApi().onBuilderInit(initBuilderWrap);
+    getApi().onChromeInit(initChromeWrap);
     setKeyUtilPlatform(platform);
     loadFonts();
     updateZoomFactor(getApi().getZoomFactor());
@@ -219,6 +221,66 @@ async function initWave(initOpts: WaveInitOpts) {
     await firstRenderPromise;
     perfMark("first render done");
     console.log("Wave First Render Done");
+    getApi().setWindowInitStatus("wave-ready");
+}
+
+async function initChromeWrap(initOpts: ChromeInitOpts) {
+    try {
+        await initChrome(initOpts);
+    } catch (e) {
+        getApi().sendLog("Error in initChrome " + e.message + "\n" + e.stack);
+        console.error("Error in initChrome", e);
+    } finally {
+        document.body.style.visibility = null;
+        document.body.style.opacity = null;
+        document.body.classList.remove("is-transparent");
+    }
+}
+
+// initChrome boots the persistent chrome renderer: window-scoped (no tabId), renders ChromeApp
+// (tab bar + workspace switcher). Mirrors initBuilder's shape — no tab/layout/monaco/global-key
+// setup (the tab content renderers own those).
+async function initChrome(initOpts: ChromeInitOpts) {
+    getApi().sendLog("Init Chrome " + JSON.stringify(initOpts));
+    const globalInitOpts: GlobalInitOptions = {
+        clientId: initOpts.clientId,
+        windowId: initOpts.windowId,
+        platform,
+        environment: "renderer",
+        isChrome: true,
+    };
+    console.log("Wave Chrome Init", globalInitOpts);
+    await GlobalModel.getInstance().initialize(globalInitOpts);
+    initGlobal(globalInitOpts);
+    (window as any).globalAtoms = atoms;
+
+    const globalWS = initWshrpc(makeWindowRouteId(initOpts.windowId));
+    (window as any).globalWS = globalWS;
+    (window as any).TabRpcClient = TabRpcClient;
+    await loadConnStatus();
+
+    const [_client, waveWindow] = await Promise.all([
+        WOS.loadAndPinWaveObject<Client>(WOS.makeORef("client", initOpts.clientId)),
+        WOS.loadAndPinWaveObject<WaveWindow>(WOS.makeORef("window", initOpts.windowId)),
+    ]);
+    const ws = await WOS.loadAndPinWaveObject<Workspace>(WOS.makeORef("workspace", waveWindow.workspaceid));
+    loadAllWorkspaceTabs(ws);
+    WOS.wpsSubscribeToObject(WOS.makeORef("workspace", waveWindow.workspaceid));
+
+    const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
+    globalStore.set(atoms.fullConfigAtom, fullConfig);
+    const waveaiModeConfig = await RpcApi.GetWaveAIModeConfigCommand(TabRpcClient);
+    globalStore.set(atoms.waveaiModeConfigAtom, waveaiModeConfig.configs);
+
+    let firstRenderResolveFn: () => void = null;
+    const firstRenderPromise = new Promise<void>((resolve) => {
+        firstRenderResolveFn = resolve;
+    });
+    const reactElem = createElement(ChromeApp, { onFirstRender: firstRenderResolveFn }, null);
+    const elem = document.getElementById("main");
+    const root = createRoot(elem);
+    root.render(reactElem);
+    await firstRenderPromise;
     getApi().setWindowInitStatus("wave-ready");
 }
 

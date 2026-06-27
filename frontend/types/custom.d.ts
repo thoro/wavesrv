@@ -61,6 +61,7 @@ declare global {
         primaryTabStartup?: boolean;
         builderId?: string;
         isPreview?: boolean;
+        isChrome?: boolean;
     };
 
     type WaveInitOpts = {
@@ -73,6 +74,11 @@ declare global {
 
     type BuilderInitOpts = {
         builderId: string;
+        clientId: string;
+        windowId: string;
+    };
+
+    type ChromeInitOpts = {
         clientId: string;
         windowId: string;
     };
@@ -122,6 +128,7 @@ declare global {
         setWindowInitStatus: (status: "ready" | "wave-ready") => void; // set-window-init-status
         onWaveInit: (callback: (initOpts: WaveInitOpts) => void) => void; // wave-init
         onBuilderInit: (callback: (initOpts: BuilderInitOpts) => void) => void; // builder-init
+        onChromeInit: (callback: (initOpts: ChromeInitOpts) => void) => void; // chrome-init
         sendLog: (log: string) => void; // fe-log
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path

@@ -442,6 +442,16 @@ export function initIpcHandlers() {
             return;
         }
 
+        const chromeWindow = getAllWaveWindows().find((ww) => ww.chromeView?.webContents?.id === event.sender.id);
+        if (chromeWindow != null) {
+            if (status === "ready" && chromeWindow.chromeSavedInitOpts?.clientId) {
+                console.log("chromeSavedInitOpts calling chrome-init", chromeWindow.waveWindowId);
+                chromeWindow.chromeView.webContents.send("chrome-init", chromeWindow.chromeSavedInitOpts);
+            }
+            // "wave-ready" from chrome: no readiness gate in this phase
+            return;
+        }
+
         const builderWindow = getBuilderWindowByWebContentsId(event.sender.id);
         if (builderWindow != null) {
             if (status === "ready") {
