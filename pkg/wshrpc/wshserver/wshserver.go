@@ -176,12 +176,13 @@ func (ws *WshServer) UpdateWorkspaceTabIdsCommand(ctx context.Context, workspace
 }
 
 func (ws *WshServer) MoveTabCommand(ctx context.Context, data wshrpc.CommandMoveTabData) error {
+	ctx = waveobj.ContextWithUpdates(ctx)
 	newSourceActiveTabId, err := wcore.MoveTab(ctx, data.SourceWorkspaceId, data.DestWorkspaceId, data.TabId)
 	if err != nil {
 		return fmt.Errorf("error moving tab: %w", err)
 	}
-	wcore.SendWaveObjUpdate(waveobj.ORef{OType: waveobj.OType_Workspace, OID: data.SourceWorkspaceId})
-	wcore.SendWaveObjUpdate(waveobj.ORef{OType: waveobj.OType_Workspace, OID: data.DestWorkspaceId})
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	wps.Broker.SendUpdateEvents(updates)
 	if newSourceActiveTabId != "" {
 		wcore.SendActiveTabUpdate(ctx, data.SourceWorkspaceId, newSourceActiveTabId)
 	}
