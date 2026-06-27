@@ -63,6 +63,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
     const [searchText, setSearchText] = useState("");
     const [selectedIndex, setSelectedIndex] = useState(0);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const initialSelectionSetRef = useRef(false);
     const showWorkspaceName = useAtomValue(env.getSettingsKeyAtom("app:showworkspacename"));
 
     const updateWorkspaceList = useCallback(async () => {
@@ -97,6 +98,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
 
     useEffect(() => {
         if (!isOpen) {
+            initialSelectionSetRef.current = false;
             return;
         }
         setSearchText("");
@@ -122,6 +124,17 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
         }
         return entries.filter(({ workspace }) => workspace?.name?.toLowerCase().includes(query));
     }, [workspaceList, rawWorkspaceList, searchText]);
+
+    // On open, once the list has loaded, preselect the current (source) workspace instead of the
+    // first entry. Only done once per open so it doesn't override keyboard navigation afterwards.
+    useEffect(() => {
+        if (!isOpen || initialSelectionSetRef.current || searchText || filteredWorkspaces.length === 0) {
+            return;
+        }
+        const idx = filteredWorkspaces.findIndex(({ workspace }) => workspace?.oid === activeWorkspace?.oid);
+        setSelectedIndex(idx >= 0 ? idx : 0);
+        initialSelectionSetRef.current = true;
+    }, [isOpen, filteredWorkspaces, searchText, activeWorkspace]);
 
     const switchToWorkspace = useCallback((workspace: Workspace) => {
         if (!workspace) {

@@ -891,10 +891,17 @@ ipcMain.on("set-chrome-overlay", (event, overlay: boolean) => {
     ww?.setChromeOverlay(overlay);
 });
 
-// content renderer's Cmd+Shift+O -> open the workspace switcher in the chrome renderer
+// content renderer's Cmd+Shift+O -> open the workspace switcher in the chrome renderer. Foreground
+// and focus the chrome webContents immediately (before the renderer round-trip) so its popover gets
+// both keyboard focus (arrows/enter) and mouse-move/hover from the start.
 ipcMain.on("open-workspace-switcher", (event) => {
     const ww = getWaveWindowByWebContentsId(event.sender.id);
-    ww?.chromeView?.webContents.send("open-workspace-switcher");
+    if (ww?.chromeView == null) {
+        return;
+    }
+    ww.setChromeOverlay(true);
+    ww.chromeView.webContents.focus();
+    ww.chromeView.webContents.send("open-workspace-switcher");
 });
 
 ipcMain.on("create-tab", async (event, _opts) => {
