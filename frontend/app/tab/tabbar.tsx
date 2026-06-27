@@ -12,7 +12,7 @@ import { useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
-import { moveTabToWorkspaceAtPoint } from "./crosswindowmove";
+import { moveTabToWorkspaceAtPoint, WaveTabDragType } from "./crosswindowmove";
 import { Tab } from "./tab";
 import "./tabbar.scss";
 import { TabBarEnv } from "./tabbarenv";
@@ -324,6 +324,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         dragTabIdRef.current = tabId;
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", tabId);
+        event.dataTransfer.setData(WaveTabDragType, tabId);
+        // float a snapshot of the tab under the cursor while dragging (incl. across windows)
+        event.dataTransfer.setDragImage(event.currentTarget, event.nativeEvent.offsetX, event.nativeEvent.offsetY);
         setDraggingTab(tabId);
     };
 
@@ -456,6 +459,17 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     }
 
     const tabsWrapperWidth = getTotalTabsWidth(tabIds);
+
+    // Drop-line position while reordering. Hidden when the drop would be a no-op (immediately
+    // before/after the dragged tab), since dropping there changes nothing.
+    let dropLineLeft: number | null = null;
+    if (!noTabs && draggingTab != null && dropIndex != null) {
+        const sourceIndex = tabIds.indexOf(draggingTab);
+        if (dropIndex !== sourceIndex && dropIndex !== sourceIndex + 1) {
+            dropLineLeft = getTabOffset(tabIds, dropIndex);
+        }
+    }
+
     const showAppMenuButton = env.isWindows() || (!env.isMacOS() && !showMenuBar);
 
     // Calculate window drag left width based on platform and state
@@ -548,10 +562,8 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                                 />
                             );
                         })}
-                    {!noTabs && draggingTab != null && dropIndex != null && (
-                        <div className="tab-drop-line" style={{ left: getTabOffset(tabIds, dropIndex) }} />
-                    )}
                 </div>
+                {dropLineLeft != null && <div className="tab-drop-line" style={{ left: dropLineLeft }} />}
             </div>
             <button
                 ref={addBtnRef}

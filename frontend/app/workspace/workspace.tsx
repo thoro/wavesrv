@@ -6,6 +6,7 @@ import { ErrorBoundary } from "@/app/element/errorboundary";
 import { CenteredDiv } from "@/app/element/quickelems";
 import { ModalsRenderer } from "@/app/modals/modalsrenderer";
 import { TabBar } from "@/app/tab/tabbar";
+import { WaveTabDragType } from "@/app/tab/crosswindowmove";
 import { TabContent } from "@/app/tab/tabcontent";
 import { TabSwitcher } from "@/app/tab/tabswitcher";
 import { VTabBar } from "@/app/tab/vtabbar";
@@ -109,7 +110,17 @@ const WorkspaceElem = memo(() => {
     const outerHandleClass = `bg-transparent hover:bg-zinc-500/20 transition-colors ${outerHandleVisible ? "w-0.5" : "w-0 pointer-events-none"}`;
 
     return (
-        <div className="flex flex-col w-full flex-grow overflow-hidden">
+        <div
+            className="flex flex-col w-full flex-grow overflow-hidden"
+            onDragOver={(e) => {
+                // accept tab drags anywhere in the window so the cursor shows "move" (the actual
+                // cross-window move is resolved from the source on dragend)
+                if (e.dataTransfer.types.includes(WaveTabDragType)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                }
+            }}
+        >
             <TabSwitcher />
             {!(showLeftTabBar && isMacOS()) && <TabBar key={ws.oid} workspace={ws} noTabs={showLeftTabBar} />}
             {showLeftTabBar && isMacOS() && <MacOSTabBarSpacer />}

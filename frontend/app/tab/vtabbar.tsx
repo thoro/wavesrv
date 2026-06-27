@@ -12,7 +12,7 @@ import { validateCssColor } from "@/util/color-validator";
 import { cn, fireAndForget } from "@/util/util";
 import { useAtomValue } from "jotai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { moveTabToWorkspaceAtPoint } from "./crosswindowmove";
+import { moveTabToWorkspaceAtPoint, WaveTabDragType } from "./crosswindowmove";
 import { buildTabBarContextMenu, buildTabContextMenu, getMoveTabTargets } from "./tabcontextmenu";
 import { UpdateStatusBanner } from "./updatebanner";
 import { VTab, VTabItem } from "./vtab";
@@ -398,6 +398,12 @@ export function VTabBar({ workspace, className }: VTabBarProps) {
                                 dragSourceRef.current = tabId;
                                 event.dataTransfer.effectAllowed = "move";
                                 event.dataTransfer.setData("text/plain", tabId);
+                                event.dataTransfer.setData(WaveTabDragType, tabId);
+                                event.dataTransfer.setDragImage(
+                                    event.currentTarget,
+                                    event.nativeEvent.offsetX,
+                                    event.nativeEvent.offsetY
+                                );
                                 setDragTabId(tabId);
                                 setDropIndex(index);
                                 setDropLineTop(event.currentTarget.offsetTop);
