@@ -5,7 +5,16 @@ import { ClientService, ObjectService, WindowService, WorkspaceService } from "@
 import { waveEventSubscribeSingle } from "@/app/store/wps";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { fireAndForget } from "@/util/util";
-import { BaseWindow, BaseWindowConstructorOptions, dialog, globalShortcut, ipcMain, screen, webContents } from "electron";
+import {
+    BaseWindow,
+    BaseWindowConstructorOptions,
+    dialog,
+    globalShortcut,
+    ipcMain,
+    screen,
+    webContents,
+    WebContentsView,
+} from "electron";
 import { globalEvents } from "emain/emain-events";
 import path from "path";
 import { debounce } from "throttle-debounce";
@@ -18,7 +27,7 @@ import {
 } from "./emain-activity";
 import { log } from "./emain-log";
 import { getElectronAppBasePath, isDev, unamePlatform } from "./emain-platform";
-import { getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
+import { ChromeStripHeight, getOrCreateWebViewForTab, getWaveTabViewByWebContentsId, WaveTabView } from "./emain-tabview";
 import { delay, ensureBoundsAreVisible, waveKeyToElectronKey } from "./emain-util";
 import { ElectronWshClient } from "./emain-wsh";
 import { updater } from "./updater";
@@ -153,6 +162,7 @@ export class WaveBrowserWindow extends BaseWindow {
     workspaceId: string;
     allLoadedTabViews: Map<string, WaveTabView>;
     activeTabView: WaveTabView;
+    chromeView: WebContentsView;
     private canClose: boolean;
     private deleteAllowed: boolean;
     private actionQueue: WindowActionQueueEntry[];
@@ -232,6 +242,9 @@ export class WaveBrowserWindow extends BaseWindow {
         this.waveWindowId = waveWindow.oid;
         this.workspaceId = waveWindow.workspaceid;
         this.allLoadedTabViews = new Map<string, WaveTabView>();
+        if (ChromeStripHeight > 0) {
+            this.createChromeView();
+        }
         const winBoundsPoller = setInterval(() => {
             if (this.isDestroyed()) {
                 clearInterval(winBoundsPoller);
@@ -251,6 +264,7 @@ export class WaveBrowserWindow extends BaseWindow {
             if (this.isDestroyed()) {
                 return;
             }
+            this.positionChromeView();
             this.activeTabView?.positionTabOnScreen(this.getContentBounds());
         });
         this.on(
@@ -267,6 +281,7 @@ export class WaveBrowserWindow extends BaseWindow {
             if (tabView) {
                 tabView.webContents.send("fullscreen-change", true);
             }
+            this.positionChromeView();
             this.activeTabView?.positionTabOnScreen(this.getContentBounds());
         });
         this.on("leave-full-screen", async () => {
@@ -277,6 +292,7 @@ export class WaveBrowserWindow extends BaseWindow {
             if (tabView) {
                 tabView.webContents.send("fullscreen-change", false);
             }
+            this.positionChromeView();
             this.activeTabView?.positionTabOnScreen(this.getContentBounds());
         });
         this.on("focus", () => {
@@ -429,7 +445,12 @@ export class WaveBrowserWindow extends BaseWindow {
         const clientId = await getClientId();
         await this.awaitWithDevTimeout(tabView.initPromise, "initPromise", tabView.waveTabId);
         const winBounds = this.getContentBounds();
-        tabView.setBounds({ x: 0, y: 0, width: winBounds.width, height: winBounds.height });
+        tabView.setBounds({
+            x: 0,
+            y: ChromeStripHeight,
+            width: winBounds.width,
+            height: winBounds.height - ChromeStripHeight,
+        });
         this.contentView.addChildView(tabView);
         const initOpts: WaveInitOpts = {
             tabId: tabView.waveTabId,
@@ -525,6 +546,7 @@ export class WaveBrowserWindow extends BaseWindow {
         if (this.isDestroyed()) {
             return;
         }
+        this.positionChromeView();
         const curBounds = this.getContentBounds();
         this.activeTabView?.positionTabOnScreen(curBounds);
         for (const tabView of this.allLoadedTabViews.values()) {
@@ -533,6 +555,27 @@ export class WaveBrowserWindow extends BaseWindow {
             }
             tabView?.positionTabOffScreen(curBounds);
         }
+    }
+
+    // Phase 0 (persistent chrome renderer): a placeholder chrome strip pinned to the top of the
+    // window that does NOT swap on tab switch. The real tab bar / workspace switcher will render
+    // here in a later phase; for now it validates the two-view layout (strip + content below).
+    private createChromeView() {
+        this.chromeView = new WebContentsView();
+        this.chromeView.setBackgroundColor("#1f211f");
+        this.chromeView.webContents.loadURL(
+            "data:text/html,<body style='margin:0;background:%231f211f;color:%23888888;font:12px -apple-system,sans-serif;display:flex;align-items:center;height:100vh;padding-left:90px'>persistent chrome (placeholder)</body>"
+        );
+        this.contentView.addChildView(this.chromeView);
+        this.positionChromeView();
+    }
+
+    private positionChromeView() {
+        if (this.chromeView == null || this.isDestroyed()) {
+            return;
+        }
+        const cb = this.getContentBounds();
+        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: ChromeStripHeight });
     }
 
     async queueCreateTab() {

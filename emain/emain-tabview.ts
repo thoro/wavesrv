@@ -108,6 +108,11 @@ function computeBgColor(fullConfig: FullConfigType): string {
 
 const wcIdToWaveTabMap = new Map<number, WaveTabView>();
 
+// Height (px) of the persistent chrome strip at the top of the window. The chrome renderer
+// (tab bar + workspace switcher) occupies this strip; tab content views sit below it. Set to 0
+// to disable the separate-chrome layout and restore the original full-window tab views.
+export const ChromeStripHeight = 36;
+
 export function getWaveTabViewByWebContentsId(webContentsId: number): WaveTabView {
     if (webContentsId == null) {
         return null;
@@ -198,16 +203,13 @@ export class WaveTabView extends WebContentsView {
     }
 
     positionTabOnScreen(winBounds: Rectangle) {
+        const top = ChromeStripHeight;
+        const newHeight = winBounds.height - top;
         const curBounds = this.getBounds();
-        if (
-            curBounds.width == winBounds.width &&
-            curBounds.height == winBounds.height &&
-            curBounds.x == 0 &&
-            curBounds.y == 0
-        ) {
+        if (curBounds.width == winBounds.width && curBounds.height == newHeight && curBounds.x == 0 && curBounds.y == top) {
             return;
         }
-        this.setBounds({ x: 0, y: 0, width: winBounds.width, height: winBounds.height });
+        this.setBounds({ x: 0, y: top, width: winBounds.width, height: newHeight });
     }
 
     positionTabOffScreen(winBounds: Rectangle) {
@@ -221,7 +223,7 @@ export class WaveTabView extends WebContentsView {
 
     isOnScreen() {
         const bounds = this.getBounds();
-        return bounds.x == 0 && bounds.y == 0;
+        return bounds.x == 0 && bounds.y == ChromeStripHeight;
     }
 
     destroy() {
