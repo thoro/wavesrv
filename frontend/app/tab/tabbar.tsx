@@ -131,12 +131,16 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const confirmClose = useAtomValue(env.getSettingsKeyAtom("tab:confirmclose")) ?? false;
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
+    const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
 
 
-    // Update refs when tabIds change
-    useEffect(() => {
+    // Keep the refs array in sync with tabIds during render (not in an effect) so a tab that
+    // was just added/moved in gets a real ref on its first render. Otherwise it renders with
+    // ref={undefined}, setSizeAndPosition skips it, and it stays invisible (opacity:0) until
+    // some later re-render happens to fix it.
+    if (tabRefs.current.length !== tabIds.length) {
         tabRefs.current = tabIds.map((_, index) => tabRefs.current[index] || createRef());
-    }, [tabIds]);
+    }
 
     useEffect(() => {
         if (!workspace) {
@@ -270,6 +274,14 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         }
     }, [reinitVersion]);
 
+    // re-layout when the window regains focus: a window that rendered in the background may have
+    // measured/positioned its tabs before layout settled (the tab re-measure is keyed on focus too)
+    useEffect(() => {
+        if (documentHasFocus) {
+            setSizeAndPosition();
+        }
+    }, [documentHasFocus]);
+
     // update layout on resize
     useEffect(() => {
         window.addEventListener("resize", handleResizeTabs);
@@ -346,6 +358,22 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         order.splice(sourceIndex, 1);
         order.splice(adjusted, 0, sourceTabId);
         fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, order));
+    };
+
+    // Drop zone for the empty area to the right of the tabs: dropping there targets the last
+    // position. The per-tab handlers cover the tabs themselves; this only acts when the cursor
+    // isn't over a tab so it doesn't override the per-tab insert position.
+    const handleTabBarDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+        if (dragTabIdRef.current == null) {
+            return;
+        }
+        if ((event.target as HTMLElement).closest(".tab") != null) {
+            return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        dropIndexRef.current = tabIds.length;
+        setDropIndex(tabIds.length);
     };
 
     const handleTabDrop = (event: React.DragEvent<HTMLDivElement>) => {
@@ -480,7 +508,13 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             >
                 <WorkspaceSwitcher />
             </Tooltip>
-            <div className="tab-bar" ref={tabBarRef} data-overlayscrollbars-initialize>
+            <div
+                className="tab-bar"
+                ref={tabBarRef}
+                data-overlayscrollbars-initialize
+                onDragOver={handleTabBarDragOver}
+                onDrop={handleTabDrop}
+            >
                 <div
                     className="tabs-wrapper"
                     ref={tabsWrapperRef}

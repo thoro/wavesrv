@@ -28,6 +28,7 @@ export type TabEnv = WaveEnvSubset<{
     atoms: {
         fullConfigAtom: WaveEnv["atoms"]["fullConfigAtom"];
         workspace: WaveEnv["atoms"]["workspace"];
+        documentHasFocus: WaveEnv["atoms"]["documentHasFocus"];
     };
     services: {
         workspace: WaveEnv["services"]["workspace"];
@@ -64,6 +65,8 @@ interface TabVProps {
     onRename: (newName: string) => void;
     /** Reports the tab's desired content width (name + chrome) so the tab bar can size it */
     onMeasure?: (width: number) => void;
+    /** Re-runs measurement when it flips (e.g. on window focus) so background-rendered tabs re-measure */
+    remeasureKey?: boolean;
     /** Optional ref that TabV populates with a startRename() function for external callers */
     renameRef?: React.RefObject<(() => void) | null>;
 }
@@ -88,6 +91,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         onContextMenu,
         onRename,
         onMeasure,
+        remeasureKey,
         renameRef,
     } = props;
     const truncateTabName = (name: string) => [...(name ?? "")].slice(0, MaxTabNameLength).join("");
@@ -205,7 +209,7 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         const badgeCount = badges?.length ?? 0;
         const badgeAllowance = flagColor != null || badgeCount > 0 ? badgeCount * TabBadgeWidth + 6 : 0;
         onMeasure(measureRef.current.offsetWidth + TabChromeWidth + badgeAllowance);
-    }, [displayName, active, badges, flagColor, onMeasure]);
+    }, [displayName, active, badges, flagColor, onMeasure, remeasureKey]);
 
     const handleMouseDownOnClose = (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
         event.stopPropagation();
@@ -297,6 +301,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
+    const documentHasFocus = useAtomValue(env.atoms.documentHasFocus);
 
     const rawFlagColor = tabData?.meta?.["tab:flagcolor"];
     let flagColor: string | null = null;
@@ -378,6 +383,7 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             onContextMenu={handleContextMenu}
             onRename={handleRename}
             onMeasure={onMeasure}
+            remeasureKey={documentHasFocus}
             renameRef={renameRef}
         />
     );

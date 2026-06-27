@@ -26,6 +26,7 @@ export type TabBarEnv = WaveEnvSubset<{
         zoomFactorAtom: WaveEnv["atoms"]["zoomFactorAtom"];
         reinitVersion: WaveEnv["atoms"]["reinitVersion"];
         updaterStatusAtom: WaveEnv["atoms"]["updaterStatusAtom"];
+        documentHasFocus: WaveEnv["atoms"]["documentHasFocus"];
     };
     wos: WaveEnv["wos"];
     getSettingsKeyAtom: SettingsKeyAtomFnType<"app:hideaibutton" | "app:tabbar" | "tab:confirmclose" | "window:showmenubar">;
