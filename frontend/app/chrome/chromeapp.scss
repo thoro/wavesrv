@@ -23,6 +23,29 @@ body.chrome-window #main {
         margin-right: 0;
     }
 
+    // horizontally scrollable when tabs overflow, but with no visible scrollbar (trackpad/drag still
+    // scrolls); position:relative so the reorder drop-line can be absolutely placed within it
+    .chrome-tabs-row {
+        position: relative;
+        overflow-x: auto;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    .chrome-tab-drop-line {
+        position: absolute;
+        top: 2px;
+        bottom: 2px;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--accent-color);
+        pointer-events: none;
+        z-index: 10;
+    }
+
     // 130px slot with a 124px inner (calc(100% - 6px)) so the visible tab matches the original
     // exactly; tabs sit flush (no inter-tab gap), the inner provides the visual spacing.
     .chrome-tab {
@@ -95,6 +118,10 @@ body.chrome-window #main {
                 color: var(--main-text-color);
                 font-weight: 600;
             }
+        }
+
+        &.dragging {
+            opacity: 0.4;
         }
     }
 
