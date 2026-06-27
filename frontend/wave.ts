@@ -3,6 +3,7 @@
 
 import { App } from "@/app/app";
 import { ChromeApp, chromeWaveAIOpenAtom } from "@/app/chrome/chromeapp";
+import { workspaceSwitcherOpenAtom } from "@/app/tab/workspaceswitcher";
 import { loadMonaco } from "@/app/monaco/monaco-env";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { loadBadges } from "@/app/store/badge";
@@ -252,6 +253,7 @@ async function initChrome(initOpts: ChromeInitOpts) {
     // the chrome renderer is transparent below the strip (so an expanded popover shows the content)
     document.body.classList.add("chrome-window");
     getApi().onChromeWaveAIState((isOpen) => globalStore.set(chromeWaveAIOpenAtom, isOpen));
+    getApi().onOpenWorkspaceSwitcher(() => globalStore.set(workspaceSwitcherOpenAtom, true));
     const globalInitOpts: GlobalInitOptions = {
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,

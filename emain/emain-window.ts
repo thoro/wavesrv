@@ -866,6 +866,12 @@ ipcMain.on("set-chrome-overlay", (event, overlay: boolean) => {
     ww?.setChromeOverlay(overlay);
 });
 
+// content renderer's Cmd+Shift+O -> open the workspace switcher in the chrome renderer
+ipcMain.on("open-workspace-switcher", (event) => {
+    const ww = getWaveWindowByWebContentsId(event.sender.id);
+    ww?.chromeView?.webContents.send("open-workspace-switcher");
+});
+
 ipcMain.on("create-tab", async (event, _opts) => {
     const senderWc = event.sender;
     const ww = getWaveWindowByWebContentsId(senderWc.id);

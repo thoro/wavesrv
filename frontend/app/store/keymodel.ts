@@ -559,7 +559,13 @@ function registerGlobalKeys() {
         return true;
     });
     globalKeyMap.set("Cmd:Shift:o", () => {
-        globalStore.set(workspaceSwitcherOpenAtom, true);
+        // the workspace switcher lives in the chrome renderer when it owns the tab bar, so route
+        // the shortcut there; otherwise it's in this (content) renderer
+        if (globalStore.get(atoms.separateChrome)) {
+            getApi().openWorkspaceSwitcher();
+        } else {
+            globalStore.set(workspaceSwitcherOpenAtom, true);
+        }
         return true;
     });
     globalKeyMap.set("Cmd:Shift:k", () => {

@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld("api", {
     toggleWaveAI: () => ipcRenderer.send("toggle-waveai"),
     onToggleWaveAI: (callback) => ipcRenderer.on("toggle-waveai", () => callback()),
     onChromeWaveAIState: (callback) => ipcRenderer.on("chrome-waveai-state", (_event, isOpen) => callback(isOpen)),
+    openWorkspaceSwitcher: () => ipcRenderer.send("open-workspace-switcher"),
+    onOpenWorkspaceSwitcher: (callback) => ipcRenderer.on("open-workspace-switcher", () => callback()),
     sendLog: (log) => ipcRenderer.send("fe-log", log),
     onQuicklook: (filePath: string) => ipcRenderer.send("quicklook", filePath),
     openNativePath: (filePath: string) => ipcRenderer.send("open-native-path", filePath),
