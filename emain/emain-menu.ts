@@ -448,10 +448,12 @@ function convertMenuDefArrToMenu(
 
 electron.ipcMain.on(
     "contextmenu-show",
-    (event, workspaceOrBuilderId: string, menuDefArr: ElectronContextMenuItem[]) => {
-        const webContents = getWebContentsByWorkspaceOrBuilderId(workspaceOrBuilderId);
+    (event, _workspaceOrBuilderId: string, menuDefArr: ElectronContextMenuItem[]) => {
+        // Route the click back to the renderer that opened the menu. Looking it up by workspace id
+        // returns the active CONTENT tab view, which is wrong when the menu was opened from the
+        // chrome renderer (the chrome tab bar) -- its callbacks would never fire.
+        const webContents = event.sender;
         if (!webContents) {
-            console.error("invalid window for context menu:", workspaceOrBuilderId);
             event.returnValue = true;
             return;
         }
