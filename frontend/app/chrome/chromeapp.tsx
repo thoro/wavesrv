@@ -12,8 +12,6 @@ import { isMacOS } from "@/util/platformutil";
 import { Provider, useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 
-import "../tailwindsetup.css";
-
 // ChromeApp is the root of the persistent chrome renderer. It renders the window-scoped tab bar
 // + workspace switcher (the chrome strip pinned above the tab content views). It deliberately does
 // NOT mount TabModelContext / the block layout — only chrome UI lives here.
