@@ -13,6 +13,8 @@
         margin-right: 0;
     }
 
+    // 130px slot with a 124px inner (calc(100% - 6px)) so the visible tab matches the original
+    // exactly; tabs sit flush (no inter-tab gap), the inner provides the visual spacing.
     .chrome-tab {
         position: relative;
         display: flex;
@@ -21,10 +23,19 @@
         width: 130px;
         height: 26px;
         flex-shrink: 0;
-        border-radius: 6px;
         color: var(--secondary-text-color);
         cursor: pointer;
         font-weight: 500;
+
+        .chrome-tab-inner {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: calc(100% - 6px);
+            height: 100%;
+            border-radius: 6px;
+        }
 
         .chrome-tab-name {
             font-size: 11px;
@@ -58,16 +69,18 @@
         }
 
         &:hover {
-            background: rgb(from var(--main-text-color) r g b / 0.1);
-
+            .chrome-tab-inner {
+                background: rgb(from var(--main-text-color) r g b / 0.1);
+            }
             .chrome-tab-close {
                 visibility: visible;
             }
         }
 
         &.active {
-            background: rgb(from var(--main-text-color) r g b / 0.1);
-
+            .chrome-tab-inner {
+                background: rgb(from var(--main-text-color) r g b / 0.1);
+            }
             .chrome-tab-name {
                 color: var(--main-text-color);
                 font-weight: 600;
@@ -80,6 +93,7 @@
         align-items: center;
         justify-content: center;
         height: 22px;
+        margin-left: 2px;
         padding: 0 8px;
         border-radius: 6px;
         color: var(--secondary-text-color);

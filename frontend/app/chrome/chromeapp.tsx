@@ -48,7 +48,7 @@ const ChromeContent = () => {
             <div className="shrink-0" style={NoDragRegion}>
                 <WorkspaceSwitcher />
             </div>
-            <div className="flex min-w-0 shrink items-center gap-1 overflow-x-auto" style={NoDragRegion}>
+            <div className="flex min-w-0 shrink items-center overflow-x-auto" style={NoDragRegion}>
                 {tabIds.map((tabId) => (
                     <ChromeTab key={tabId} tabId={tabId} active={tabId === activeTabId} workspaceId={workspace?.oid} />
                 ))}
@@ -66,18 +66,20 @@ const ChromeTab = ({ tabId, active, workspaceId }: { tabId: string; active: bool
     const name = tabData?.name ?? "";
     return (
         <div className={cn("chrome-tab", { active })} onClick={() => getApi().setActiveTab(tabId)}>
-            <span className="chrome-tab-name">{name}</span>
-            <button
-                type="button"
-                className="chrome-tab-close"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    fireAndForget(() => getApi().closeTab(workspaceId, tabId, false));
-                }}
-                title="Close Tab"
-            >
-                <i className="fa fa-solid fa-xmark" />
-            </button>
+            <div className="chrome-tab-inner">
+                <span className="chrome-tab-name">{name}</span>
+                <button
+                    type="button"
+                    className="chrome-tab-close"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        fireAndForget(() => getApi().closeTab(workspaceId, tabId, false));
+                    }}
+                    title="Close Tab"
+                >
+                    <i className="fa fa-solid fa-xmark" />
+                </button>
+            </div>
         </div>
     );
 };
