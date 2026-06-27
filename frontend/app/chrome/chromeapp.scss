@@ -1,0 +1,11 @@
+// Copyright 2026, Command Line Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+// The WorkspaceSwitcher button carries margins tuned for the original bottom-aligned tab bar;
+// neutralize them so it centers in the chrome strip.
+.chrome-strip {
+    .workspace-switcher-button {
+        margin-bottom: 0;
+        margin-right: 0;
+    }
+}
