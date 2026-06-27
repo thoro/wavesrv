@@ -11,6 +11,7 @@ import { isMacOS } from "@/util/platformutil";
 import { cn, fireAndForget } from "@/util/util";
 import { atom, Provider, useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 import "./chromeapp.scss";
 
@@ -19,6 +20,8 @@ const NoDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 // reflects the active content tab's AI panel open state (pushed from emain via chrome-waveai-state)
 export const chromeWaveAIOpenAtom = atom(false);
+// true while the active content tab's renderer is still loading (pushed via chrome-loading)
+export const chromeLoadingAtom = atom(false);
 
 // ChromeApp is the root of the persistent chrome renderer. It renders the window-scoped tab bar
 // + workspace switcher (the chrome strip pinned above the tab content views). It deliberately does
@@ -44,14 +47,17 @@ const ChromeContent = () => {
     const activeTabId = workspace?.activetabid;
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const aiOpen = useAtomValue(chromeWaveAIOpenAtom);
-    // grow/shrink the chrome view (via emain) while a popover is open so it isn't clipped by the strip
+    const loading = useAtomValue(chromeLoadingAtom);
+    // grow/shrink the chrome view (via emain) while a popover is open or the active tab is loading,
+    // so the popover / loading spinner can render over the content instead of clipping at the strip
     const wsSwitcherOpen = useAtomValue(workspaceSwitcherOpenAtom);
     useEffect(() => {
-        getApi().setChromeOverlay(wsSwitcherOpen);
-    }, [wsSwitcherOpen]);
+        getApi().setChromeOverlay(wsSwitcherOpen || loading);
+    }, [wsSwitcherOpen, loading]);
     // the strip itself is a window-drag region; interactive children opt out with no-drag, and the
     // empty area to the right of the tabs stays draggable for moving the window
     return (
+        <>
         <div
             className={cn("chrome-strip flex w-full items-center gap-2 overflow-hidden px-2", isMacOS() ? "pl-[78px]" : "")}
             style={DragRegion}
@@ -79,6 +85,14 @@ const ChromeContent = () => {
                 </button>
             )}
         </div>
+        {loading &&
+            createPortal(
+                <div className="chrome-loading-overlay">
+                    <div className="chrome-spinner" />
+                </div>,
+                document.body
+            )}
+        </>
     );
 };
 

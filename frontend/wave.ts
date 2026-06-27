@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { App } from "@/app/app";
-import { ChromeApp, chromeWaveAIOpenAtom } from "@/app/chrome/chromeapp";
+import { ChromeApp, chromeLoadingAtom, chromeWaveAIOpenAtom } from "@/app/chrome/chromeapp";
 import { workspaceSwitcherOpenAtom } from "@/app/tab/workspaceswitcher";
 import { loadMonaco } from "@/app/monaco/monaco-env";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
@@ -254,6 +254,7 @@ async function initChrome(initOpts: ChromeInitOpts) {
     document.body.classList.add("chrome-window");
     getApi().onChromeWaveAIState((isOpen) => globalStore.set(chromeWaveAIOpenAtom, isOpen));
     getApi().onOpenWorkspaceSwitcher(() => globalStore.set(workspaceSwitcherOpenAtom, true));
+    getApi().onChromeLoading((loading) => globalStore.set(chromeLoadingAtom, loading));
     const globalInitOpts: GlobalInitOptions = {
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,

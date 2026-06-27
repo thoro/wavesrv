@@ -444,7 +444,12 @@ export class WaveBrowserWindow extends BaseWindow {
 
     private async initializeTab(tabView: WaveTabView, primaryStartupTab: boolean) {
         const clientId = await getClientId();
-        await this.awaitWithDevTimeout(tabView.initPromise, "initPromise", tabView.waveTabId);
+        // The startup tab keeps the original blocking init (preserves primaryTabStartup semantics).
+        // Tab switches do NOT await the renderer boot, so the action queue stays free and you can
+        // keep navigating; the chrome strip shows a loading spinner until the tab renders.
+        if (primaryStartupTab) {
+            await this.awaitWithDevTimeout(tabView.initPromise, "initPromise", tabView.waveTabId);
+        }
         const winBounds = this.getContentBounds();
         tabView.setBounds({
             x: 0,
@@ -466,21 +471,16 @@ export class WaveBrowserWindow extends BaseWindow {
         tabView.savedInitOpts = { ...initOpts };
         tabView.savedInitOpts.activate = false;
         delete tabView.savedInitOpts.primaryTabStartup;
-        const startTime = Date.now();
-        console.log(
-            "before wave ready, init tab, sending wave-init",
-            tabView.waveTabId,
-            primaryStartupTab ? "(primary startup)" : ""
-        );
-        tabView.webContents.send("wave-init", initOpts);
-        // Don't block the tab switch on the full wave-init handshake + first render. The caller
-        // positions/shows the view as soon as this returns; the renderer keeps its body hidden
-        // (initBare) until ready, so the tab shows the themed background and then fills in. This
-        // keeps new tabs responsive instead of waiting on the renderer boot before appearing.
+        this.updateChromeLoading();
+        // Send wave-init now when the renderer is ready (startup tab awaited above, or a reused hot
+        // spare). For a cold switch the set-window-init-status "ready" handler sends savedInitOpts
+        // once the renderer finishes loading (savedInitOpts carries no primaryTabStartup, correct
+        // for a switch), so we don't block here.
+        if (primaryStartupTab || tabView.isInitialized) {
+            tabView.webContents.send("wave-init", initOpts);
+        }
         void this.awaitWithDevTimeout(tabView.waveReadyPromise, "waveReadyPromise", tabView.waveTabId).then(
-            () => {
-                console.log("wave-ready init time", Date.now() - startTime + "ms");
-            },
+            () => this.updateChromeLoading(),
             () => {}
         );
     }
@@ -543,6 +543,7 @@ export class WaveBrowserWindow extends BaseWindow {
             }
         }, 30);
         this.notifyChromeWaveAIState();
+        this.updateChromeLoading();
     }
 
     private finalizePositioning() {
@@ -612,6 +613,16 @@ export class WaveBrowserWindow extends BaseWindow {
             return;
         }
         this.chromeView.webContents.send("chrome-waveai-state", this.activeTabView?.isWaveAIOpen ?? false);
+    }
+
+    // tell the chrome strip whether the active tab's renderer is still loading, so it can show a
+    // loading spinner over the (blank) content area while staying interactive itself
+    updateChromeLoading() {
+        if (this.chromeView == null || this.isDestroyed()) {
+            return;
+        }
+        const loading = this.activeTabView != null && !this.activeTabView.isWaveReady;
+        this.chromeView.webContents.send("chrome-loading", loading);
     }
 
     // Auto-expand: while a chrome popover (workspace switcher, etc.) is open, grow the chrome view

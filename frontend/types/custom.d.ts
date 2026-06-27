@@ -138,6 +138,7 @@ declare global {
         onChromeWaveAIState: (callback: (isOpen: boolean) => void) => void; // chrome-waveai-state
         openWorkspaceSwitcher: () => void; // open-workspace-switcher
         onOpenWorkspaceSwitcher: (callback: () => void) => void; // open-workspace-switcher
+        onChromeLoading: (callback: (loading: boolean) => void) => void; // chrome-loading
         sendLog: (log: string) => void; // fe-log
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path
