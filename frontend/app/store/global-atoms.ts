@@ -134,6 +134,7 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
     });
     const reinitVersion = atom(0);
     const rateLimitInfoAtom = atom(null) as PrimitiveAtom<RateLimitInfo>;
+    const separateChromeAtom = atom(initOpts.separateChrome ?? false);
     atoms = {
         // initialized in wave.ts (will not be null inside of application)
         builderId: builderIdAtom,
@@ -157,6 +158,7 @@ function initGlobalAtoms(initOpts: GlobalInitOptions) {
         allConnStatus: allConnStatusAtom,
         reinitVersion,
         waveAIRateLimitInfoAtom: rateLimitInfoAtom,
+        separateChrome: separateChromeAtom,
     } as GlobalAtomsType;
 }
 

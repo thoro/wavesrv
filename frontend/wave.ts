@@ -153,6 +153,7 @@ async function initWave(initOpts: WaveInitOpts) {
         platform,
         environment: "renderer",
         primaryTabStartup: initOpts.primaryTabStartup,
+        separateChrome: initOpts.separateChrome,
     };
     console.log("Wave Init", globalInitOpts);
     globalStore.set(activeTabIdAtom, initOpts.tabId);

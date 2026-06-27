@@ -29,6 +29,7 @@ declare global {
         allConnStatus: jotai.Atom<ConnStatus[]>;
         reinitVersion: jotai.PrimitiveAtom<number>;
         waveAIRateLimitInfoAtom: jotai.PrimitiveAtom<RateLimitInfo>;
+        separateChrome: jotai.Atom<boolean>; // true when the persistent chrome renderer owns the tab bar
     };
 
     type ThrottledValueAtom<T> = jotai.WritableAtom<T, [update: jotai.SetStateAction<T>], void>;
@@ -62,6 +63,7 @@ declare global {
         builderId?: string;
         isPreview?: boolean;
         isChrome?: boolean;
+        separateChrome?: boolean;
     };
 
     type WaveInitOpts = {
@@ -70,6 +72,7 @@ declare global {
         windowId: string;
         activate: boolean;
         primaryTabStartup?: boolean;
+        separateChrome?: boolean;
     };
 
     type BuilderInitOpts = {

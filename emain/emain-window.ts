@@ -458,6 +458,7 @@ export class WaveBrowserWindow extends BaseWindow {
             clientId: clientId,
             windowId: this.waveWindowId,
             activate: true,
+            separateChrome: ChromeStripHeight > 0,
         };
         if (primaryStartupTab) {
             initOpts.primaryTabStartup = true;

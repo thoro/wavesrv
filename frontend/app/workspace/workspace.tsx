@@ -45,8 +45,10 @@ const WorkspaceElem = memo(() => {
     const workspaceLayoutModel = WorkspaceLayoutModel.getInstance();
     const tabId = useAtomValue(atoms.staticTabId);
     const ws = useAtomValue(atoms.workspace);
+    const separateChrome = useAtomValue(atoms.separateChrome);
     const tabBarPosition = useAtomValue(getSettingsKeyAtom("app:tabbar")) ?? "top";
-    const showLeftTabBar = tabBarPosition === "left";
+    // when the persistent chrome renderer owns the tab bar, the content renderer never draws one
+    const showLeftTabBar = !separateChrome && tabBarPosition === "left";
     const aiPanelVisible = useAtomValue(workspaceLayoutModel.panelVisibleAtom);
     const widgetsSidebarVisible = useAtomValue(workspaceLayoutModel.widgetsSidebarVisibleAtom);
     const windowWidth = window.innerWidth;
@@ -122,8 +124,10 @@ const WorkspaceElem = memo(() => {
             }}
         >
             <TabSwitcher />
-            {!(showLeftTabBar && isMacOS()) && <TabBar key={ws.oid} workspace={ws} noTabs={showLeftTabBar} />}
-            {showLeftTabBar && isMacOS() && <MacOSTabBarSpacer />}
+            {!separateChrome && !(showLeftTabBar && isMacOS()) && (
+                <TabBar key={ws.oid} workspace={ws} noTabs={showLeftTabBar} />
+            )}
+            {!separateChrome && showLeftTabBar && isMacOS() && <MacOSTabBarSpacer />}
             <div ref={panelContainerRef} className="flex flex-row flex-grow overflow-hidden">
                 <ErrorBoundary key={tabId}>
                     <PanelGroup
