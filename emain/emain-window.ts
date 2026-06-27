@@ -651,10 +651,13 @@ export class WaveBrowserWindow extends BaseWindow {
     }
 
     // foreground the chrome view while a popover (workspace switcher, etc.) is open so it renders
-    // over the content; background it again on close
+    // over the content; background it again on close and hand keyboard focus back to the content
     setChromeOverlay(overlay: boolean) {
         this.chromePopoverActive = overlay;
         this.applyChromeZOrder();
+        if (!overlay && !this.chromeLoadingActive) {
+            this.activeTabView?.webContents.focus();
+        }
     }
 
     async queueCreateTab() {
