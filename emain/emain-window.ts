@@ -705,6 +705,11 @@ export class WaveBrowserWindow extends BaseWindow {
         this.chromePopoverActive = overlay;
         this.positionChromeView();
         this.applyChromeZOrder();
+        // Hide the content view while a popover is open. Two overlapping WebContentsViews confuse
+        // Chromium's mouse-move target (clicks work via hit-test, but hover/:hover doesn't follow to
+        // the top view), so the popover's hover affordances (e.g. the workspace rename icon) break.
+        // With the content view hidden, the chrome view is the only one under the cursor.
+        this.activeTabView?.setVisible(!overlay);
         if (overlay) {
             this.focus();
             this.chromeView?.webContents.focus();

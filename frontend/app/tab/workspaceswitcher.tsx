@@ -248,6 +248,7 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
                                 key={workspace?.oid ?? i}
                                 entryAtom={entryAtom}
                                 isSelected={i === selectedIndex}
+                                onHover={() => setSelectedIndex(i)}
                                 onSwitchWorkspace={switchToWorkspace}
                                 onDeleteWorkspace={onDeleteWorkspace}
                             />
@@ -280,11 +281,13 @@ const WorkspaceSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
 const WorkspaceSwitcherItem = ({
     entryAtom,
     isSelected,
+    onHover,
     onSwitchWorkspace,
     onDeleteWorkspace,
 }: {
     entryAtom: PrimitiveAtom<WorkspaceListEntry>;
     isSelected: boolean;
+    onHover: () => void;
     onSwitchWorkspace: (workspace: Workspace) => void;
     onDeleteWorkspace: (workspaceId: string) => void;
 }) => {
@@ -345,6 +348,7 @@ const WorkspaceSwitcherItem = ({
             <ExpandableMenuItemGroupTitle onClick={() => onSwitchWorkspace(workspace)}>
                 <div
                     className="menu-group-title-wrapper"
+                    onMouseEnter={onHover}
                     style={
                         {
                             "--workspace-color": workspace.color,

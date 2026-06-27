@@ -142,7 +142,8 @@
             }
         }
 
-        &:hover .wave-iconbutton.edit {
+        &:hover .wave-iconbutton.edit,
+        &.keyboard-selected .wave-iconbutton.edit {
             visibility: visible;
         }
 
