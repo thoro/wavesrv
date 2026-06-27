@@ -534,15 +534,28 @@ export class WaveBrowserWindow extends BaseWindow {
             this.finalizePositioning();
         }
 
-        // something is causing the new tab to lose focus so it requires manual refocusing
-        tabView.webContents.focus();
+        // something is causing the new tab to lose focus so it requires manual refocusing -- but
+        // NOT while a chrome popover is open, or it would steal keyboard focus from the popover
+        if (!this.chromePopoverActive) {
+            tabView.webContents.focus();
+        }
         setTimeout(() => {
-            if (tabView.webContents && this.activeTabView == tabView && !tabView.webContents.isFocused()) {
+            if (
+                !this.chromePopoverActive &&
+                tabView.webContents &&
+                this.activeTabView == tabView &&
+                !tabView.webContents.isFocused()
+            ) {
                 tabView.webContents.focus();
             }
         }, 10);
         setTimeout(() => {
-            if (tabView.webContents && this.activeTabView == tabView && !tabView.webContents.isFocused()) {
+            if (
+                !this.chromePopoverActive &&
+                tabView.webContents &&
+                this.activeTabView == tabView &&
+                !tabView.webContents.isFocused()
+            ) {
                 tabView.webContents.focus();
             }
         }, 30);
@@ -603,31 +616,28 @@ export class WaveBrowserWindow extends BaseWindow {
         }
     }
 
-    // the chrome view always covers the whole window; only its z-order changes. Its top strip
-    // (ChromeStripHeight) is the tab bar; the rest of the renderer is transparent. In the
-    // background the content view (positioned below the strip) covers the transparent area; only
-    // the tab bar shows. Foregrounded, the transparent area + popover/spinner render over content.
+    // The chrome view is ALWAYS the topmost child (so its tab-bar strip reliably gets hover +
+    // keyboard, which a non-topmost WebContentsView does not). Normally it's only the 36px strip,
+    // which does NOT overlap the content view (positioned below it at y=ChromeStripHeight), so the
+    // content stays fully interactive. When a popover/spinner needs to overlay, we grow its BOUNDS
+    // to the full window (still topmost) -- we resize, never re-stack, to keep input routing sane.
     private positionChromeView() {
         if (this.chromeView == null || this.isDestroyed()) {
             return;
         }
         const cb = this.getContentBounds();
-        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: cb.height });
+        const overlay = this.chromeLoadingActive || this.chromePopoverActive;
+        this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: overlay ? cb.height : ChromeStripHeight });
     }
 
-    // raise the chrome view above the content (foreground) when a popover is open or the active tab
-    // is loading; otherwise send it behind the content (background, only the tab bar visible)
+    // keep the chrome view as the topmost child (content views added on tab switches would
+    // otherwise stack above it)
     private applyChromeZOrder() {
         if (this.chromeView == null || this.isDestroyed()) {
             return;
         }
-        const foreground = this.chromeLoadingActive || this.chromePopoverActive;
         this.contentView.removeChildView(this.chromeView);
-        if (foreground) {
-            this.contentView.addChildView(this.chromeView);
-        } else {
-            this.contentView.addChildView(this.chromeView, 0);
-        }
+        this.contentView.addChildView(this.chromeView);
     }
 
     // push the active tab's AI-panel open state to the chrome strip (so its AI button highlights)
@@ -647,15 +657,23 @@ export class WaveBrowserWindow extends BaseWindow {
         const loading = this.activeTabView != null && !this.activeTabView.isWaveReady;
         this.chromeLoadingActive = loading;
         this.chromeView.webContents.send("chrome-loading", loading);
+        this.positionChromeView();
         this.applyChromeZOrder();
     }
 
-    // foreground the chrome view while a popover (workspace switcher, etc.) is open so it renders
-    // over the content; background it again on close and hand keyboard focus back to the content
+    // expand the chrome view over the content while a popover (workspace switcher, etc.) is open so
+    // it renders over the content, and hand keyboard focus to it (z-order is not focus -- the
+    // content view stays the focused widget unless we explicitly move focus and stop it stealing it
+    // back, see the !chromePopoverActive guards in setTabViewIntoWindow). Collapse + refocus content
+    // on close.
     setChromeOverlay(overlay: boolean) {
         this.chromePopoverActive = overlay;
+        this.positionChromeView();
         this.applyChromeZOrder();
-        if (!overlay && !this.chromeLoadingActive) {
+        if (overlay) {
+            this.focus();
+            this.chromeView?.webContents.focus();
+        } else if (!this.chromeLoadingActive) {
             this.activeTabView?.webContents.focus();
         }
     }
@@ -903,7 +921,6 @@ ipcMain.on("open-workspace-switcher", (event) => {
         return;
     }
     ww.setChromeOverlay(true);
-    ww.chromeView.webContents.focus();
     ww.chromeView.webContents.send("open-workspace-switcher");
 });
 

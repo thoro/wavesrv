@@ -54,18 +54,18 @@ const ChromeContent = () => {
     useEffect(() => {
         getApi().setChromeOverlay(wsSwitcherOpen);
     }, [wsSwitcherOpen]);
-    // the strip itself is a window-drag region; interactive children opt out with no-drag, and the
-    // empty area to the right of the tabs stays draggable for moving the window
+    // The strip is NOT a drag region (a macOS drag region eats mousemove/hover). Only the empty
+    // spacer between the tabs and the AI button is draggable, so the window still moves.
     return (
         <>
         <div
             className={cn("chrome-strip flex w-full items-center gap-2 overflow-hidden px-2", isMacOS() ? "pl-[78px]" : "")}
-            style={DragRegion}
+            style={NoDragRegion}
         >
-            <div className="shrink-0" style={NoDragRegion}>
+            <div className="shrink-0">
                 <WorkspaceSwitcher />
             </div>
-            <div className="flex min-w-0 shrink items-center overflow-x-auto" style={NoDragRegion}>
+            <div className="flex min-w-0 shrink items-center overflow-x-auto">
                 {tabIds.map((tabId) => (
                     <ChromeTab key={tabId} tabId={tabId} active={tabId === activeTabId} workspaceId={workspace?.oid} />
                 ))}
@@ -73,11 +73,11 @@ const ChromeContent = () => {
                     <i className="fa fa-solid fa-plus" />
                 </button>
             </div>
+            <div className="h-full flex-1" style={DragRegion} />
             {!hideAiButton && (
                 <button
                     type="button"
-                    className={cn("chrome-aibutton ml-auto", { active: aiOpen })}
-                    style={NoDragRegion}
+                    className={cn("chrome-aibutton", { active: aiOpen })}
                     onClick={() => getApi().toggleWaveAI()}
                     title="Toggle Wave AI Panel"
                 >
