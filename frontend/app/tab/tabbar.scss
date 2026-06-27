@@ -24,6 +24,17 @@
         height: 26px;
     }
 
+    .tab-drop-line {
+        position: absolute;
+        top: 2px;
+        bottom: 2px;
+        width: 2px;
+        border-radius: 1px;
+        background-color: var(--accent-color);
+        pointer-events: none;
+        z-index: 10;
+    }
+
     .tab-bar {
         position: relative; // Needed for absolute positioning of child tabs
         display: flex;

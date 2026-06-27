@@ -99,8 +99,8 @@ function strArrayIsEqual(a: string[], b: string[]) {
 const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const env = useWaveEnv<TabBarEnv>();
     const [tabIds, setTabIds] = useState<string[]>([]);
-    const [dragStartPositions, setDragStartPositions] = useState<number[]>([]);
     const [draggingTab, setDraggingTab] = useState<string>();
+    const [dropIndex, setDropIndex] = useState<number | null>(null);
     const [tabsLoaded, setTabsLoaded] = useState({});
     const [newTabId, setNewTabId] = useState<string | null>(null);
 
@@ -109,17 +109,8 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const tabsWrapperRef = useRef<HTMLDivElement>(null);
     const tabRefs = useRef<React.RefObject<HTMLDivElement>[]>([]);
     const addBtnRef = useRef<HTMLButtonElement>(null);
-    const draggingRemovedRef = useRef(false);
-    const draggingTabDataRef = useRef({
-        tabId: "",
-        ref: { current: null },
-        tabStartX: 0,
-        tabStartIndex: 0,
-        tabIndex: 0,
-        initialOffsetX: null,
-        totalScrollOffset: null,
-        dragged: false,
-    });
+    const dragTabIdRef = useRef<string | null>(null);
+    const dropIndexRef = useRef<number | null>(null);
     const osInstanceRef = useRef<OverlayScrollbars>(null);
     const draggerLeftRef = useRef<HTMLDivElement>(null);
     const rightContainerRef = useRef<HTMLDivElement>(null);
@@ -141,8 +132,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
     const appUpdateStatus = useAtomValue(env.atoms.updaterStatusAtom);
 
-    let prevDelta: number;
-    let prevDragDirection: string;
 
     // Update refs when tabIds change
     useEffect(() => {
@@ -161,23 +150,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
             setTabIds(newTabIdsArr);
         }
     }, [workspace, tabIds]);
-
-    const saveTabsPosition = useCallback(() => {
-        const tabs = tabRefs.current;
-        if (tabs === null) return;
-
-        const newStartPositions: number[] = [];
-        let cumulativeLeft = 0; // Start from the left edge
-
-        tabRefs.current.forEach((ref) => {
-            if (ref.current) {
-                newStartPositions.push(cumulativeLeft);
-                cumulativeLeft += ref.current.getBoundingClientRect().width; // Add each tab's actual width to the cumulative position
-            }
-        });
-
-        setDragStartPositions(newStartPositions);
-    }, []);
 
     const getTabWidth = (tabId: string): number => {
         const measured = tabWidths[tabId] ?? TabDefaultWidth;
@@ -261,14 +233,8 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         }
     };
 
-    const saveTabsPositionDebounced = useCallback(
-        debounce(100, () => saveTabsPosition()),
-        [saveTabsPosition]
-    );
-
     const handleResizeTabs = useCallback(() => {
         setSizeAndPosition();
-        saveTabsPositionDebounced();
     }, [tabIds, newTabId, isFullScreen]);
 
     // flush accumulated measurements into state (debounced to coalesce a batch of reports);
@@ -294,7 +260,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
     // reposition/resize tabs whenever applied widths change (fresh closure over current tabs)
     useEffect(() => {
         setSizeAndPosition();
-        saveTabsPositionDebounced();
     }, [tabWidths]);
 
     // update layout on reinit version
@@ -319,7 +284,6 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         const allLoaded = tabIds.length > 0 && tabIds.every((id) => tabsLoaded[id]);
         if (allLoaded) {
             setSizeAndPosition(false);
-            saveTabsPosition();
             if (!prevAllLoadedRef.current) {
                 prevAllLoadedRef.current = true;
             }
@@ -328,243 +292,82 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
         tabIds,
         tabsLoaded,
         newTabId,
-        saveTabsPosition,
         hideAiButton,
         appUpdateStatus,
         zoomFactor,
         showMenuBar,
     ]);
 
-    const getDragDirection = (currentX: number) => {
-        let dragDirection: string;
-        if (currentX - prevDelta > 0) {
-            dragDirection = "+";
-        } else if (currentX - prevDelta === 0) {
-            dragDirection = prevDragDirection;
-        } else {
-            dragDirection = "-";
-        }
-        prevDelta = currentX;
-        prevDragDirection = dragDirection;
-        return dragDirection;
+    const clearDragState = () => {
+        dragTabIdRef.current = null;
+        dropIndexRef.current = null;
+        setDraggingTab(null);
+        setDropIndex(null);
     };
 
-    const getNewTabIndex = (currentX: number, tabIndex: number, dragDirection: string) => {
-        let newTabIndex = tabIndex;
-        const draggedWidth = getTabWidth(tabIds[tabIndex]);
-        if (dragDirection === "+") {
-            // Dragging to the right: move past a neighbor once the dragged tab's right edge clears its midpoint
-            for (let i = tabIndex + 1; i < tabIds.length; i++) {
-                const otherMidpoint = dragStartPositions[i] + getTabWidth(tabIds[i]) / 2;
-                if (currentX + draggedWidth > otherMidpoint) {
-                    newTabIndex = i;
-                }
-            }
-        } else {
-            // Dragging to the left: move past a neighbor once the dragged tab's left edge clears its midpoint
-            for (let i = tabIndex - 1; i >= 0; i--) {
-                const otherMidpoint = dragStartPositions[i] + getTabWidth(tabIds[i]) / 2;
-                if (currentX < otherMidpoint) {
-                    newTabIndex = i;
-                }
-            }
-        }
-        return newTabIndex;
+    // HTML5 drag: the dragged tab follows the cursor as a native drag image (and the OS shows a
+    // move/no-drop cursor based on dropEffect), which also works across windows. Reordering is
+    // resolved on drop via a drop-line; cross-window moves are resolved on dragend.
+    const handleTabDragStart = (event: React.DragEvent<HTMLDivElement>, tabId: string) => {
+        dragTabIdRef.current = tabId;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", tabId);
+        setDraggingTab(tabId);
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
-        const { tabId, ref, tabStartX } = draggingTabDataRef.current;
-
-        let initialOffsetX = draggingTabDataRef.current.initialOffsetX;
-        let totalScrollOffset = draggingTabDataRef.current.totalScrollOffset;
-        if (initialOffsetX === null) {
-            initialOffsetX = event.clientX - tabStartX;
-            draggingTabDataRef.current.initialOffsetX = initialOffsetX;
-        }
-        let currentX = event.clientX - initialOffsetX - totalScrollOffset;
-        let tabBarRectWidth = tabBarRef.current.getBoundingClientRect().width;
-        // for macos, it's offset to make space for the window buttons
-        const tabBarRectLeftOffset = tabBarRef.current.getBoundingClientRect().left;
-        const incrementDecrement = tabBarRectLeftOffset * 0.05;
-        const dragDirection = getDragDirection(currentX);
-        const scrollable = scrollableRef.current;
-        const tabWidth = getTabWidth(tabId);
-
-        // Scroll the tab bar if the dragged tab overflows the container bounds
-        if (scrollable) {
-            const { viewport } = osInstanceRef.current.elements();
-            const currentScrollLeft = viewport.scrollLeft;
-
-            if (event.clientX <= tabBarRectLeftOffset) {
-                viewport.scrollLeft = Math.max(0, currentScrollLeft - incrementDecrement); // Scroll left
-                if (viewport.scrollLeft !== currentScrollLeft) {
-                    // Only adjust if the scroll actually changed
-                    draggingTabDataRef.current.totalScrollOffset += currentScrollLeft - viewport.scrollLeft;
-                }
-            } else if (event.clientX >= tabBarRectWidth + tabBarRectLeftOffset) {
-                viewport.scrollLeft = Math.min(viewport.scrollWidth, currentScrollLeft + incrementDecrement); // Scroll right
-                if (viewport.scrollLeft !== currentScrollLeft) {
-                    // Only adjust if the scroll actually changed
-                    draggingTabDataRef.current.totalScrollOffset -= viewport.scrollLeft - currentScrollLeft;
-                }
-            }
-        }
-
-        // Re-calculate currentX after potential scroll adjustment
-        initialOffsetX = draggingTabDataRef.current.initialOffsetX;
-        totalScrollOffset = draggingTabDataRef.current.totalScrollOffset;
-        currentX = event.clientX - initialOffsetX - totalScrollOffset;
-
-        setDraggingTab((prev) => (prev !== tabId ? tabId : prev));
-
-        // Check if the tab has moved 5 pixels
-        if (Math.abs(currentX - tabStartX) >= 50) {
-            draggingTabDataRef.current.dragged = true;
-        }
-
-        // Constrain movement within the container bounds
-        if (tabBarRef.current) {
-            const totalTabsWidth = getTotalTabsWidth(tabIds);
-            if (totalTabsWidth < tabBarRectWidth) {
-                // Set to the total tabs width if there's vacant space
-                tabBarRectWidth = totalTabsWidth;
-            } else if (scrollable) {
-                // Set to the scrollable width if the tab bar is scrollable
-                tabBarRectWidth = tabsWrapperRef.current.scrollWidth;
-            }
-
-            const minLeft = 0;
-            const maxRight = tabBarRectWidth - tabWidth;
-
-            // Adjust currentX to stay within bounds
-            currentX = Math.min(Math.max(currentX, minLeft), maxRight);
-        }
-
-        ref.current!.style.transform = `translate3d(${currentX}px,0,0)`;
-        ref.current!.style.zIndex = "100";
-
-        const tabIndex = draggingTabDataRef.current.tabIndex;
-        const newTabIndex = getNewTabIndex(currentX, tabIndex, dragDirection);
-
-        if (newTabIndex !== tabIndex) {
-            // Remove the dragged tab if not already done
-            if (!draggingRemovedRef.current) {
-                tabIds.splice(tabIndex, 1);
-                draggingRemovedRef.current = true;
-            }
-
-            // Find current index of the dragged tab in tempTabs
-            const currentIndexOfDraggingTab = tabIds.indexOf(tabId);
-
-            // Move the dragged tab to its new position
-            if (currentIndexOfDraggingTab !== -1) {
-                tabIds.splice(currentIndexOfDraggingTab, 1);
-            }
-            tabIds.splice(newTabIndex, 0, tabId);
-
-            // Update visual positions of the tabs using cumulative offsets (widths vary per tab)
-            tabIds.forEach((localTabId, index) => {
-                const ref = tabRefs.current.find((ref) => ref.current.dataset.tabId === localTabId);
-                if (ref.current && localTabId !== tabId) {
-                    ref.current.style.transform = `translate3d(${getTabOffset(tabIds, index)}px,0,0)`;
-                    ref.current.classList.add("animate");
-                }
-            });
-
-            draggingTabDataRef.current.tabIndex = newTabIndex;
-        }
-    };
-
-    const setUpdatedTabsDebounced = useCallback(
-        debounce(300, (tabIds: string[]) => {
-            // Reset styles
-            tabRefs.current.forEach((ref) => {
-                ref.current.style.zIndex = "0";
-                ref.current.classList.remove("animate");
-            });
-            // Reset dragging state
-            setDraggingTab(null);
-            // Update workspace tab ids
-            fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, tabIds));
-        }),
-        []
-    );
-
-    const handleMouseUp = (event: MouseEvent) => {
-        const { tabIndex, dragged, tabId } = draggingTabDataRef.current;
-
-        document.removeEventListener("mouseup", handleMouseUp);
-        document.removeEventListener("mousemove", handleMouseMove);
-        draggingRemovedRef.current = false;
-
-        const resetStyles = () => {
-            tabRefs.current.forEach((ref) => {
-                if (ref.current) {
-                    ref.current.style.zIndex = "0";
-                    ref.current.classList.remove("animate");
-                }
-            });
-            setDraggingTab(null);
-        };
-
-        if (!dragged) {
-            resetStyles();
+    const handleTabDragOver = (event: React.DragEvent<HTMLDivElement>, index: number) => {
+        if (dragTabIdRef.current == null) {
             return;
         }
-
-        // If the tab was released over a different Wave window, move it there instead of
-        // reordering in place. The release point is in screen coordinates, so it resolves
-        // even when the cursor ended up over another window.
-        const screenX = event.screenX;
-        const screenY = event.screenY;
-        fireAndForget(async () => {
-            const moved = await moveTabToWorkspaceAtPoint(workspace.oid, tabId, screenX, screenY);
-            if (moved) {
-                resetStyles();
-                return;
-            }
-            const draggingTab = tabIds[tabIndex];
-            const finalLeftPosition = getTabOffset(tabIds, tabIndex);
-            const ref = tabRefs.current.find((r) => r.current.dataset.tabId === draggingTab);
-            if (ref?.current) {
-                ref.current.classList.add("animate");
-                ref.current.style.transform = `translate3d(${finalLeftPosition}px,0,0)`;
-            }
-            setUpdatedTabsDebounced(tabIds);
-        });
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        const rect = event.currentTarget.getBoundingClientRect();
+        const insertBefore = event.clientX - rect.left < rect.width / 2;
+        const nextDropIndex = insertBefore ? index : index + 1;
+        dropIndexRef.current = nextDropIndex;
+        setDropIndex(nextDropIndex);
     };
 
-    const handleDragStart = useCallback(
-        (event: React.MouseEvent<HTMLDivElement, MouseEvent>, tabId: string, ref: React.RefObject<HTMLDivElement>) => {
-            if (event.button !== 0) return;
+    const reorderTabs = (targetIndex: number) => {
+        const sourceTabId = dragTabIdRef.current;
+        if (sourceTabId == null) {
+            return;
+        }
+        const order = [...tabIds];
+        const sourceIndex = order.indexOf(sourceTabId);
+        if (sourceIndex === -1) {
+            return;
+        }
+        const bounded = Math.max(0, Math.min(targetIndex, order.length));
+        const adjusted = sourceIndex < bounded ? bounded - 1 : bounded;
+        if (sourceIndex === adjusted) {
+            return;
+        }
+        order.splice(sourceIndex, 1);
+        order.splice(adjusted, 0, sourceTabId);
+        fireAndForget(() => env.rpc.UpdateWorkspaceTabIdsCommand(TabRpcClient, workspace.oid, order));
+    };
 
-            const tabIndex = tabIds.indexOf(tabId);
-            const tabStartX = dragStartPositions[tabIndex]; // Starting X position of the tab
+    const handleTabDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        if (dropIndexRef.current != null) {
+            reorderTabs(dropIndexRef.current);
+        }
+        clearDragState();
+    };
 
-            console.log("handleDragStart", tabId, tabIndex, tabStartX);
-            if (ref.current) {
-                draggingTabDataRef.current = {
-                    tabId: ref.current.dataset.tabId,
-                    ref,
-                    tabStartX,
-                    tabIndex,
-                    tabStartIndex: tabIndex,
-                    initialOffsetX: null,
-                    totalScrollOffset: 0,
-                    dragged: false,
-                };
-
-                document.addEventListener("mousemove", handleMouseMove);
-                document.addEventListener("mouseup", handleMouseUp);
-            }
-        },
-        [tabIds, dragStartPositions]
-    );
+    const handleTabDragEnd = (event: React.DragEvent<HTMLDivElement>) => {
+        const sourceTabId = dragTabIdRef.current;
+        const screenX = event.screenX;
+        const screenY = event.screenY;
+        clearDragState();
+        if (sourceTabId != null) {
+            fireAndForget(() => moveTabToWorkspaceAtPoint(workspace.oid, sourceTabId, screenX, screenY));
+        }
+    };
 
     const handleSelectTab = (tabId: string) => {
-        if (!draggingTabDataRef.current.dragged) {
-            env.electron.setActiveTab(tabId);
-        }
+        env.electron.setActiveTab(tabId);
     };
 
     const updateScrollDebounced = useCallback(
@@ -698,7 +501,10 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                                     showDivider={showDivider}
                                     onSelect={() => handleSelectTab(tabId)}
                                     active={isActive}
-                                    onDragStart={(event) => handleDragStart(event, tabId, tabRefs.current[index])}
+                                    onDragStart={(event) => handleTabDragStart(event, tabId)}
+                                    onDragOver={(event) => handleTabDragOver(event, index)}
+                                    onDrop={handleTabDrop}
+                                    onDragEnd={handleTabDragEnd}
                                     onClose={(event) => handleCloseTab(event, tabId)}
                                     onLoaded={() => handleTabLoaded(tabId)}
                                     isDragging={draggingTab === tabId}
@@ -708,6 +514,9 @@ const TabBar = memo(({ workspace, noTabs }: TabBarProps) => {
                                 />
                             );
                         })}
+                    {!noTabs && draggingTab != null && dropIndex != null && (
+                        <div className="tab-drop-line" style={{ left: getTabOffset(tabIds, dropIndex) }} />
+                    )}
                 </div>
             </div>
             <button

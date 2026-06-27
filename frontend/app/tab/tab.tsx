@@ -56,7 +56,10 @@ interface TabVProps {
     flagColor?: string | null;
     onClick: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
-    onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
+    onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDragEnd: (event: React.DragEvent<HTMLDivElement>) => void;
     onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void;
     onRename: (newName: string) => void;
     /** Reports the tab's desired content width (name + chrome) so the tab bar can size it */
@@ -79,6 +82,9 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
         onClick,
         onClose,
         onDragStart,
+        onDragOver,
+        onDrop,
+        onDragEnd,
         onContextMenu,
         onRename,
         onMeasure,
@@ -213,7 +219,11 @@ const TabV = forwardRef<HTMLDivElement, TabVProps>((props, ref) => {
                 dragging: isDragging,
                 "new-tab": isNew,
             })}
-            onMouseDown={onDragStart}
+            draggable={!isEditable}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onDragEnd={onDragEnd}
             onClick={onClick}
             onContextMenu={onContextMenu}
             data-tab-id={tabId}
@@ -259,14 +269,31 @@ interface TabProps {
     isNew: boolean;
     onSelect: () => void;
     onClose: (event: React.MouseEvent<HTMLButtonElement, MouseEvent> | null) => void;
-    onDragStart: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
+    onDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
+    onDragEnd: (event: React.DragEvent<HTMLDivElement>) => void;
     onLoaded: () => void;
     onMeasure?: (width: number) => void;
 }
 
 const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
-    const { id, active, showDivider, isDragging, tabWidth, isNew, onLoaded, onSelect, onClose, onDragStart, onMeasure } =
-        props;
+    const {
+        id,
+        active,
+        showDivider,
+        isDragging,
+        tabWidth,
+        isNew,
+        onLoaded,
+        onSelect,
+        onClose,
+        onDragStart,
+        onDragOver,
+        onDrop,
+        onDragEnd,
+        onMeasure,
+    } = props;
     const env = useWaveEnv<TabEnv>();
     const [tabData, _] = env.wos.useWaveObjectValue<Tab>(makeORef("tab", id));
     const badges = useAtomValue(getTabBadgeAtom(id, env));
@@ -345,6 +372,9 @@ const TabInner = forwardRef<HTMLDivElement, TabProps>((props, ref) => {
             onClick={handleTabClick}
             onClose={onClose}
             onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onDragEnd={onDragEnd}
             onContextMenu={handleContextMenu}
             onRename={handleRename}
             onMeasure={onMeasure}
