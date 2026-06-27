@@ -24,7 +24,12 @@ import { callWithOriginalXdgCurrentDesktopAsync, unamePlatform } from "./emain-p
 import { getWaveTabViewByWebContentsId } from "./emain-tabview";
 import { handleCtrlShiftState } from "./emain-util";
 import { getWaveVersion } from "./emain-wavesrv";
-import { createNewWaveWindow, getAllWaveWindows, getWaveWindowByWebContentsId } from "./emain-window";
+import {
+    createNewWaveWindow,
+    getAllWaveWindows,
+    getWaveWindowByWebContentsId,
+    getWorkspaceIdAtScreenPoint,
+} from "./emain-window";
 import { ElectronWshClient } from "./emain-wsh";
 
 const electronApp = electron.app;
@@ -267,26 +272,12 @@ export function initIpcHandlers() {
     });
 
     // Returns the workspace id of the Wave window at the given screen point, or "" if none.
-    // Used to complete a cross-window tab drag from the source window once the drag ends. The
-    // source workspace is preferred when the cursor is still over its window, so an in-window
-    // reorder is never mistaken for a cross-window move when windows overlap.
-    electron.ipcMain.handle(
-        "get-workspace-at-point",
-        (_event, x: number, y: number, sourceWorkspaceId: string) => {
-            const inBounds = (b: Electron.Rectangle) => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height;
-            const windows = getAllWaveWindows().filter((ww) => !ww.isDestroyed());
-            const source = windows.find((ww) => ww.workspaceId === sourceWorkspaceId);
-            if (source != null && inBounds(source.getBounds())) {
-                return source.workspaceId;
-            }
-            for (const ww of windows) {
-                if (inBounds(ww.getBounds())) {
-                    return ww.workspaceId;
-                }
-            }
-            return "";
-        }
-    );
+    // Used to complete a cross-window tab drag from the source window once the drag ends. Returns
+    // the TOPMOST window under the point (by focus order) so overlapping windows resolve to the one
+    // the user actually dropped on; the caller no-ops if it equals the source workspace (in-window).
+    electron.ipcMain.handle("get-workspace-at-point", (_event, x: number, y: number, _sourceWorkspaceId: string) => {
+        return getWorkspaceIdAtScreenPoint(x, y);
+    });
 
     electron.ipcMain.handle("capture-screenshot", async (event, rect) => {
         const tabView = getWaveTabViewByWebContentsId(event.sender.id);

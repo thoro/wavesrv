@@ -115,6 +115,40 @@ export const waveWindowMap = new Map<string, WaveBrowserWindow>(); // waveWindow
 // e.g. it persists when the app itself is not focused
 export let focusedWaveWindow: WaveBrowserWindow = null;
 
+// most-recently-focused window ids first; approximates z-order (Electron has no z-order query) so we
+// can resolve the topmost window under a screen point (used for cross-window tab drops)
+const windowFocusOrder: string[] = [];
+function bumpWindowFocusOrder(windowId: string) {
+    const idx = windowFocusOrder.indexOf(windowId);
+    if (idx !== -1) {
+        windowFocusOrder.splice(idx, 1);
+    }
+    windowFocusOrder.unshift(windowId);
+}
+
+// Returns the workspace id of the topmost (frontmost) Wave window under the given screen point, or
+// "" if none. Topmost is approximated by focus order, so overlapping windows resolve to the one the
+// user actually sees/drops on.
+export function getWorkspaceIdAtScreenPoint(x: number, y: number): string {
+    const inBounds = (ww: WaveBrowserWindow) => {
+        const b = ww.getBounds();
+        return x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height;
+    };
+    for (const windowId of windowFocusOrder) {
+        const ww = waveWindowMap.get(windowId);
+        if (ww != null && !ww.isDestroyed() && inBounds(ww)) {
+            return ww.workspaceId;
+        }
+    }
+    // fallback for any window not yet in the focus-order list
+    for (const ww of waveWindowMap.values()) {
+        if (!ww.isDestroyed() && inBounds(ww)) {
+            return ww.workspaceId;
+        }
+    }
+    return "";
+}
+
 // quake window for toggle hotkey (show/hide behavior)
 let quakeWindow: WaveBrowserWindow | null = null;
 
@@ -308,6 +342,7 @@ export class WaveBrowserWindow extends BaseWindow {
                 return;
             }
             focusedWaveWindow = this; // eslint-disable-line @typescript-eslint/no-this-alias
+            bumpWindowFocusOrder(this.waveWindowId);
             console.log("focus win", this.waveWindowId);
             fireAndForget(() => ClientService.FocusWindow(this.waveWindowId));
             setWasInFg(true);
