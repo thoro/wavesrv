@@ -115,4 +115,24 @@ body.chrome-window #main {
             color: var(--main-text-color);
         }
     }
+
+    .chrome-aibutton {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 22px;
+        padding: 0 12px;
+        border-radius: 6px;
+        color: var(--secondary-text-color);
+        cursor: pointer;
+        font-size: 13px;
+
+        &:hover {
+            background: rgb(from var(--main-text-color) r g b / 0.1);
+        }
+
+        &.active {
+            color: var(--accent-color);
+        }
+    }
 }

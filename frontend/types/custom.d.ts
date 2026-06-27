@@ -133,6 +133,9 @@ declare global {
         onBuilderInit: (callback: (initOpts: BuilderInitOpts) => void) => void; // builder-init
         onChromeInit: (callback: (initOpts: ChromeInitOpts) => void) => void; // chrome-init
         setChromeOverlay: (overlay: boolean) => void; // set-chrome-overlay
+        toggleWaveAI: () => void; // toggle-waveai
+        onToggleWaveAI: (callback: () => void) => void; // toggle-waveai
+        onChromeWaveAIState: (callback: (isOpen: boolean) => void) => void; // chrome-waveai-state
         sendLog: (log: string) => void; // fe-log
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path

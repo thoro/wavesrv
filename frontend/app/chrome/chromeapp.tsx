@@ -9,13 +9,16 @@ import { atoms, getApi } from "@/store/global";
 import { makeORef } from "@/store/wos";
 import { isMacOS } from "@/util/platformutil";
 import { cn, fireAndForget } from "@/util/util";
-import { Provider, useAtomValue } from "jotai";
+import { atom, Provider, useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 
 import "./chromeapp.scss";
 
 const DragRegion = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const NoDragRegion = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
+// reflects the active content tab's AI panel open state (pushed from emain via chrome-waveai-state)
+export const chromeWaveAIOpenAtom = atom(false);
 
 // ChromeApp is the root of the persistent chrome renderer. It renders the window-scoped tab bar
 // + workspace switcher (the chrome strip pinned above the tab content views). It deliberately does
@@ -35,9 +38,12 @@ const ChromeApp = ({ onFirstRender }: { onFirstRender: () => void }) => {
 };
 
 const ChromeContent = () => {
+    const env = useWaveEnv();
     const workspace = useAtomValue(atoms.workspace);
     const tabIds = workspace?.tabids ?? [];
     const activeTabId = workspace?.activetabid;
+    const hideAiButton = useAtomValue(env.getSettingsKeyAtom("app:hideaibutton"));
+    const aiOpen = useAtomValue(chromeWaveAIOpenAtom);
     // grow/shrink the chrome view (via emain) while a popover is open so it isn't clipped by the strip
     const wsSwitcherOpen = useAtomValue(workspaceSwitcherOpenAtom);
     useEffect(() => {
@@ -61,6 +67,17 @@ const ChromeContent = () => {
                     <i className="fa fa-solid fa-plus" />
                 </button>
             </div>
+            {!hideAiButton && (
+                <button
+                    type="button"
+                    className={cn("chrome-aibutton ml-auto", { active: aiOpen })}
+                    style={NoDragRegion}
+                    onClick={() => getApi().toggleWaveAI()}
+                    title="Toggle Wave AI Panel"
+                >
+                    <i className="fa fa-sparkles" />
+                </button>
+            )}
         </div>
     );
 };

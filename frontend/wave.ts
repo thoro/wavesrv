@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { App } from "@/app/app";
-import { ChromeApp } from "@/app/chrome/chromeapp";
+import { ChromeApp, chromeWaveAIOpenAtom } from "@/app/chrome/chromeapp";
 import { loadMonaco } from "@/app/monaco/monaco-env";
+import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
 import { loadBadges } from "@/app/store/badge";
 import { GlobalModel } from "@/app/store/global-model";
 import {
@@ -201,6 +202,11 @@ async function initWave(initOpts: WaveInitOpts) {
     registerGlobalKeys();
     registerElectronReinjectKeyHandler();
     registerControlShiftStateUpdateHandler();
+    // chrome strip's AI button toggles this content tab's AI panel
+    getApi().onToggleWaveAI(() => {
+        const m = WorkspaceLayoutModel.getInstance();
+        m.setAIPanelVisible(!m.getAIPanelVisible());
+    });
     await loadMonaco();
     perfMark("monaco loaded");
     const fullConfig = await RpcApi.GetFullConfigCommand(TabRpcClient);
@@ -245,6 +251,7 @@ async function initChrome(initOpts: ChromeInitOpts) {
     getApi().sendLog("Init Chrome " + JSON.stringify(initOpts));
     // the chrome renderer is transparent below the strip (so an expanded popover shows the content)
     document.body.classList.add("chrome-window");
+    getApi().onChromeWaveAIState((isOpen) => globalStore.set(chromeWaveAIOpenAtom, isOpen));
     const globalInitOpts: GlobalInitOptions = {
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,

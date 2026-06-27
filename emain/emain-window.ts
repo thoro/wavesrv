@@ -542,6 +542,7 @@ export class WaveBrowserWindow extends BaseWindow {
                 tabView.webContents.focus();
             }
         }, 30);
+        this.notifyChromeWaveAIState();
     }
 
     private finalizePositioning() {
@@ -603,6 +604,14 @@ export class WaveBrowserWindow extends BaseWindow {
         }
         const cb = this.getContentBounds();
         this.chromeView.setBounds({ x: 0, y: 0, width: cb.width, height: ChromeStripHeight });
+    }
+
+    // push the active tab's AI-panel open state to the chrome strip (so its AI button highlights)
+    notifyChromeWaveAIState() {
+        if (this.chromeView == null || this.isDestroyed()) {
+            return;
+        }
+        this.chromeView.webContents.send("chrome-waveai-state", this.activeTabView?.isWaveAIOpen ?? false);
     }
 
     // Auto-expand: while a chrome popover (workspace switcher, etc.) is open, grow the chrome view
@@ -871,7 +880,17 @@ ipcMain.on("set-waveai-open", (event, isOpen: boolean) => {
     const tabView = getWaveTabViewByWebContentsId(event.sender.id);
     if (tabView) {
         tabView.isWaveAIOpen = isOpen;
+        const ww = getWaveWindowByTabId(tabView.waveTabId);
+        if (ww?.activeTabView === tabView) {
+            ww.notifyChromeWaveAIState();
+        }
     }
+});
+
+// chrome AI button -> toggle the active content tab's AI panel (cross-renderer)
+ipcMain.on("toggle-waveai", (event) => {
+    const ww = getWaveWindowByWebContentsId(event.sender.id);
+    ww?.activeTabView?.webContents.send("toggle-waveai");
 });
 
 ipcMain.handle("close-tab", async (event, workspaceId: string, tabId: string, confirmClose: boolean) => {
