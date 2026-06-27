@@ -139,6 +139,7 @@ declare global {
         openWorkspaceSwitcher: () => void; // open-workspace-switcher
         onOpenWorkspaceSwitcher: (callback: () => void) => void; // open-workspace-switcher
         onChromeLoading: (callback: (loading: boolean) => void) => void; // chrome-loading
+        onChromeWorkspaceChanged: (callback: () => void) => void; // chrome-workspace-changed
         sendLog: (log: string) => void; // fe-log
         onQuicklook: (filePath: string) => void; // quicklook
         openNativePath(filePath: string): void; // open-native-path

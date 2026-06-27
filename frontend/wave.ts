@@ -255,6 +255,16 @@ async function initChrome(initOpts: ChromeInitOpts) {
     getApi().onChromeWaveAIState((isOpen) => globalStore.set(chromeWaveAIOpenAtom, isOpen));
     getApi().onOpenWorkspaceSwitcher(() => globalStore.set(workspaceSwitcherOpenAtom, true));
     getApi().onChromeLoading((loading) => globalStore.set(chromeLoadingAtom, loading));
+    // the chrome renderer persists across workspace switches; reload the window (its workspaceid
+    // drives atoms.workspaceId/workspace) and the new workspace's tabs so the tab bar follows
+    getApi().onChromeWorkspaceChanged(() => {
+        void (async () => {
+            const win = await WOS.reloadWaveObject<WaveWindow>(WOS.makeORef("window", initOpts.windowId));
+            const newWs = await WOS.loadAndPinWaveObject<Workspace>(WOS.makeORef("workspace", win.workspaceid));
+            loadAllWorkspaceTabs(newWs);
+            WOS.wpsSubscribeToObject(WOS.makeORef("workspace", win.workspaceid));
+        })();
+    });
     const globalInitOpts: GlobalInitOptions = {
         clientId: initOpts.clientId,
         windowId: initOpts.windowId,
