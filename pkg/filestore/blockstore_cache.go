@@ -217,11 +217,10 @@ func (entry *CacheEntry) readAt(ctx context.Context, offset int64, size int64, r
 	if offset+size > file.Size {
 		size = file.Size - offset
 	}
-	if file.Opts.Circular {
-		realDataOffset := int64(0)
-		if file.Size > file.Opts.MaxSize {
-			realDataOffset = file.Size - file.Opts.MaxSize
-		}
+	// circular and segmented files have a moving start: clamp an old offset
+	// forward to the first retained byte and return the adjusted real offset
+	if file.Opts.Circular || file.Opts.Segmented {
+		realDataOffset := file.DataStartIdx()
 		if offset < realDataOffset {
 			truncateAmt := realDataOffset - offset
 			offset += truncateAmt
@@ -232,7 +231,7 @@ func (entry *CacheEntry) readAt(ctx context.Context, offset int64, size int64, r
 		}
 	}
 	partMap := file.computePartMap(offset, size)
-	dataEntryMap, err := entry.loadDataPartsForRead(ctx, getPartIdxsFromMap(partMap))
+	dataEntryMap, err := entry.loadDataPartsForRead(ctx, getPartIdxsFromMap(partMap), file.Opts.Compressed)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -270,13 +269,13 @@ func prunePartsWithCache(dataEntries map[int]*DataCacheEntry, parts []int) []int
 	return rtn
 }
 
-func (entry *CacheEntry) loadDataPartsIntoCache(ctx context.Context, parts []int) error {
+func (entry *CacheEntry) loadDataPartsIntoCache(ctx context.Context, parts []int, compressed bool) error {
 	parts = prunePartsWithCache(entry.DataEntries, parts)
 	if len(parts) == 0 {
 		// parts are already loaded
 		return nil
 	}
-	dbDataParts, err := dbGetFileParts(ctx, entry.ZoneId, entry.Name, parts)
+	dbDataParts, err := dbGetFileParts(ctx, entry.ZoneId, entry.Name, parts, compressed)
 	if err != nil {
 		return fmt.Errorf("error getting data parts: %w", err)
 	}
@@ -286,7 +285,7 @@ func (entry *CacheEntry) loadDataPartsIntoCache(ctx context.Context, parts []int
 	return nil
 }
 
-func (entry *CacheEntry) loadDataPartsForRead(ctx context.Context, parts []int) (map[int]*DataCacheEntry, error) {
+func (entry *CacheEntry) loadDataPartsForRead(ctx context.Context, parts []int, compressed bool) (map[int]*DataCacheEntry, error) {
 	if len(parts) == 0 {
 		return nil, nil
 	}
@@ -294,7 +293,7 @@ func (entry *CacheEntry) loadDataPartsForRead(ctx context.Context, parts []int) 
 	var dbDataParts map[int]*DataCacheEntry
 	if len(dbParts) > 0 {
 		var err error
-		dbDataParts, err = dbGetFileParts(ctx, entry.ZoneId, entry.Name, dbParts)
+		dbDataParts, err = dbGetFileParts(ctx, entry.ZoneId, entry.Name, dbParts, compressed)
 		if err != nil {
 			return nil, fmt.Errorf("error getting data parts: %w", err)
 		}

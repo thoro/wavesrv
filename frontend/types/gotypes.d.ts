@@ -999,6 +999,8 @@ declare global {
         ijsonbudget?: number;
         truncate?: boolean;
         append?: boolean;
+        compressed?: boolean;
+        segmented?: boolean;
     };
 
     // wshrpc.FocusedBlockData

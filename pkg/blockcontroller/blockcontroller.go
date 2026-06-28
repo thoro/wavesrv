@@ -42,7 +42,10 @@ const (
 )
 
 const (
-	DefaultTermMaxFileSize = 2 * 1024 * 1024
+	// term scrollback retention window (plaintext). the term file is a
+	// compressed, segmented append-only log, so on-disk cost is a fraction of
+	// this and only the ~64KB live tail chunk is held in memory.
+	DefaultTermMaxFileSize = 256 * 1024 * 1024
 	DefaultHtmlMaxFileSize = 256 * 1024
 	MaxInitScriptSize      = 50 * 1024
 )

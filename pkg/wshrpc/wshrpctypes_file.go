@@ -78,6 +78,8 @@ type FileOpts struct {
 	IJsonBudget int   `json:"ijsonbudget,omitempty"`
 	Truncate    bool  `json:"truncate,omitempty"`
 	Append      bool  `json:"append,omitempty"`
+	Compressed  bool  `json:"compressed,omitempty"` // zstd-compress on-disk part blobs (transparent; logical size/offsets unchanged)
+	Segmented   bool  `json:"segmented,omitempty"`  // append-only segmented log: parts never wrap; oldest chunk rows are dropped past MaxSize (0 = unbounded), advancing DataStartIdx
 }
 
 type FileMeta = map[string]any

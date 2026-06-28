@@ -165,7 +165,7 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 
 	if jobId == "" {
 		log.Printf("block %q starting new durable shell\n", dsc.BlockId)
-		fsErr := filestore.WFS.MakeFile(ctx, dsc.BlockId, wavebase.BlockFile_Term, nil, wshrpc.FileOpts{MaxSize: DefaultTermMaxFileSize, Circular: true})
+		fsErr := filestore.WFS.MakeFile(ctx, dsc.BlockId, wavebase.BlockFile_Term, nil, wshrpc.FileOpts{MaxSize: DefaultTermMaxFileSize, Segmented: true, Compressed: true})
 		if fsErr != nil && fsErr != fs.ErrExist {
 			return fmt.Errorf("error creating block term file: %w", fsErr)
 		}

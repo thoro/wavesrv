@@ -774,3 +774,343 @@ func TestIJson(t *testing.T) {
 		t.Errorf("data mismatch: expected %v, got %v", rootSet["data"], outData)
 	}
 }
+
+func flushAndClear(t *testing.T, ctx context.Context) {
+	if _, err := WFS.FlushCache(ctx); err != nil {
+		t.Fatalf("error flushing cache: %v", err)
+	}
+	WFS.clearCache()
+}
+
+func TestCompressedRoundTrip(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+
+	// highly compressible data spanning multiple parts (partDataSize=50 in tests)
+	data := string(bytes.Repeat([]byte("abcde"), 60)) // 300 bytes -> 6 parts
+	plain := "plainfile"
+	comp := "compfile"
+	if err := WFS.MakeFile(ctx, zoneId, plain, nil, wshrpc.FileOpts{}); err != nil {
+		t.Fatalf("error creating plain file: %v", err)
+	}
+	if err := WFS.MakeFile(ctx, zoneId, comp, nil, wshrpc.FileOpts{Compressed: true}); err != nil {
+		t.Fatalf("error creating compressed file: %v", err)
+	}
+	if err := WFS.WriteFile(ctx, zoneId, plain, []byte(data)); err != nil {
+		t.Fatalf("error writing plain file: %v", err)
+	}
+	if err := WFS.WriteFile(ctx, zoneId, comp, []byte(data)); err != nil {
+		t.Fatalf("error writing compressed file: %v", err)
+	}
+	// force a full DB round-trip so compress-on-write/decompress-on-read run
+	flushAndClear(t, ctx)
+
+	checkFileSize(t, ctx, zoneId, comp, int64(len(data)))
+	checkFileData(t, ctx, zoneId, comp, data)
+	// round-trip equality vs uncompressed file holding identical bytes
+	_, plainData, err := WFS.ReadFile(ctx, zoneId, plain)
+	if err != nil {
+		t.Fatalf("error reading plain file: %v", err)
+	}
+	_, compData, err := WFS.ReadFile(ctx, zoneId, comp)
+	if err != nil {
+		t.Fatalf("error reading compressed file: %v", err)
+	}
+	if !bytes.Equal(plainData, compData) {
+		t.Errorf("compressed file data does not match plain file data")
+	}
+
+	// verify the on-disk blob is actually compressed: reading part 0 raw
+	// (compressed=false) yields the zstd frame, not the plaintext part
+	flushAndClear(t, ctx)
+	rawParts, err := dbGetFileParts(ctx, zoneId, comp, []int{0}, false)
+	if err != nil {
+		t.Fatalf("error getting raw part: %v", err)
+	}
+	rawBlob := rawParts[0].Data
+	if bytes.Equal(rawBlob, []byte(data[0:partDataSize])) {
+		t.Errorf("on-disk blob was not compressed (matches plaintext)")
+	}
+}
+
+func TestCompressedAppendAndReadAt(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+	fileName := "capp"
+	if err := WFS.MakeFile(ctx, zoneId, fileName, nil, wshrpc.FileOpts{Compressed: true}); err != nil {
+		t.Fatalf("error creating file: %v", err)
+	}
+
+	// append in varied chunk sizes that cross part boundaries (partDataSize=50)
+	chunks := []string{"hello ", "world", string(bytes.Repeat([]byte("X"), 60)), "tail-end-data"}
+	var full string
+	for _, c := range chunks {
+		if err := WFS.AppendData(ctx, zoneId, fileName, []byte(c)); err != nil {
+			t.Fatalf("error appending: %v", err)
+		}
+		full += c
+		// flush+clear after each append so the next append reloads the tail
+		// part from the DB (exercises decompress of a partial part)
+		flushAndClear(t, ctx)
+	}
+
+	checkFileSize(t, ctx, zoneId, fileName, int64(len(full)))
+	checkFileData(t, ctx, zoneId, fileName, full)
+
+	// read-at across part boundaries
+	for _, off := range []int64{0, 5, 48, 50, 51, 60, 70} {
+		if off >= int64(len(full)) {
+			continue
+		}
+		size := int64(20)
+		if off+size > int64(len(full)) {
+			size = int64(len(full)) - off
+		}
+		flushAndClear(t, ctx)
+		_, rdata, err := WFS.ReadAt(ctx, zoneId, fileName, off, size)
+		if err != nil {
+			t.Fatalf("error reading at %d: %v", off, err)
+		}
+		if string(rdata) != full[off:off+size] {
+			t.Errorf("read-at mismatch at offset %d: expected %q, got %q", off, full[off:off+size], string(rdata))
+		}
+	}
+}
+
+func TestCompressedTruncate(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+	fileName := "ctrunc"
+	if err := WFS.MakeFile(ctx, zoneId, fileName, nil, wshrpc.FileOpts{Compressed: true}); err != nil {
+		t.Fatalf("error creating file: %v", err)
+	}
+	big := string(bytes.Repeat([]byte("0123456789"), 20)) // 200 bytes
+	if err := WFS.WriteFile(ctx, zoneId, fileName, []byte(big)); err != nil {
+		t.Fatalf("error writing file: %v", err)
+	}
+	flushAndClear(t, ctx)
+	checkFileSize(t, ctx, zoneId, fileName, int64(len(big)))
+
+	// WriteFile replaces (truncates) the file
+	small := "short"
+	if err := WFS.WriteFile(ctx, zoneId, fileName, []byte(small)); err != nil {
+		t.Fatalf("error truncating file: %v", err)
+	}
+	flushAndClear(t, ctx)
+	checkFileSize(t, ctx, zoneId, fileName, int64(len(small)))
+	checkFileData(t, ctx, zoneId, fileName, small)
+}
+
+func TestCompressedCircular(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+	fileName := "ccirc"
+	// MaxSize rounds up to a multiple of partDataSize (50) -> 100
+	if err := WFS.MakeFile(ctx, zoneId, fileName, nil, wshrpc.FileOpts{Circular: true, MaxSize: 100, Compressed: true}); err != nil {
+		t.Fatalf("error creating circular file: %v", err)
+	}
+	data := string(bytes.Repeat([]byte("9876543210"), 15)) // 150 bytes > MaxSize
+	if err := WFS.AppendData(ctx, zoneId, fileName, []byte(data)); err != nil {
+		t.Fatalf("error appending: %v", err)
+	}
+	flushAndClear(t, ctx)
+	checkFileSize(t, ctx, zoneId, fileName, 150)
+	// circular keeps the last MaxSize bytes
+	checkFileData(t, ctx, zoneId, fileName, data[len(data)-100:])
+}
+
+func segPartCount(t *testing.T, ctx context.Context, zoneId string, name string) int {
+	n, err := WithTxRtn(ctx, func(tx *TxWrap) (int, error) {
+		return tx.GetInt("SELECT COUNT(*) FROM db_file_data WHERE zoneid = ? AND name = ?", zoneId, name), nil
+	})
+	if err != nil {
+		t.Fatalf("error counting parts: %v", err)
+	}
+	return n
+}
+
+func statFile(t *testing.T, ctx context.Context, zoneId string, name string) *WaveFile {
+	f, err := WFS.Stat(ctx, zoneId, name)
+	if err != nil {
+		t.Fatalf("error stating file %q: %v", name, err)
+	}
+	return f
+}
+
+// segmented append-only log: write far past the retention window (partDataSize=50
+// in tests, MaxSize=500 => 10-chunk window) and verify the external contract holds:
+// Size monotonic-absolute, DataStartIdx advances in chunk steps, ReadAt clamps an
+// old offset forward, a backfill-style sequential read reconstructs the retained
+// tail, and old chunk rows are physically dropped from the DB.
+func TestSegmentedEndlessScrollback(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+	fileName := "seg1"
+	const maxSize = 500 // 10 chunks of partDataSize=50
+	if err := WFS.MakeFile(ctx, zoneId, fileName, nil, wshrpc.FileOpts{Segmented: true, Compressed: true, MaxSize: maxSize}); err != nil {
+		t.Fatalf("error creating segmented file: %v", err)
+	}
+
+	full := makeText(5000) // 100 chunks worth, 10x past the window
+	const appendChunk = 37 // not aligned to partDataSize, crosses boundaries
+	for off := 0; off < len(full); off += appendChunk {
+		end := off + appendChunk
+		if end > len(full) {
+			end = len(full)
+		}
+		if err := WFS.AppendData(ctx, zoneId, fileName, []byte(full[off:end])); err != nil {
+			t.Fatalf("error appending at %d: %v", off, err)
+		}
+		if (off/appendChunk)%5 == 0 {
+			flushAndClear(t, ctx)
+		}
+	}
+	flushAndClear(t, ctx)
+
+	checkFileSize(t, ctx, zoneId, fileName, int64(len(full)))
+
+	f := statFile(t, ctx, zoneId, fileName)
+	startIdx := f.DataStartIdx()
+	if startIdx == 0 {
+		t.Fatalf("expected DataStartIdx to advance past 0 for a file %d bytes past the window", len(full))
+	}
+	if startIdx%partDataSize != 0 {
+		t.Fatalf("DataStartIdx %d not chunk-aligned (partDataSize=%d)", startIdx, partDataSize)
+	}
+	// retained window must be within (maxParts-1, maxParts] chunks of plaintext
+	retained := f.Size - startIdx
+	if retained > maxSize || retained <= maxSize-partDataSize {
+		t.Fatalf("retained length %d outside expected window (maxSize=%d, part=%d)", retained, maxSize, partDataSize)
+	}
+
+	// physical retention: only the retained chunks remain in the DB
+	wantParts := int((f.Size + partDataSize - 1) / partDataSize) // total written chunks
+	wantParts -= int(startIdx / partDataSize)                    // minus dropped chunks
+	if got := segPartCount(t, ctx, zoneId, fileName); got != wantParts {
+		t.Fatalf("on-disk chunk count mismatch: got %d, want %d", got, wantParts)
+	}
+
+	// reading from an old (dropped) offset clamps forward to the retained start;
+	// the window must reach into the retained region to yield data
+	realOff, data, err := WFS.ReadAt(ctx, zoneId, fileName, 0, startIdx+100)
+	if err != nil {
+		t.Fatalf("error reading at dropped offset: %v", err)
+	}
+	if realOff != startIdx {
+		t.Fatalf("ReadAt(0) realOffset mismatch: got %d, want %d", realOff, startIdx)
+	}
+	if string(data) != full[startIdx:startIdx+100] {
+		t.Fatalf("ReadAt(0) clamped data mismatch")
+	}
+
+	// a window entirely before the retained start clamps to empty, still
+	// reporting the real (retained) offset so a stale consumer can re-anchor
+	emptyOff, emptyData, err := WFS.ReadAt(ctx, zoneId, fileName, 0, 10)
+	if err != nil {
+		t.Fatalf("error reading fully-dropped window: %v", err)
+	}
+	if emptyOff != startIdx || len(emptyData) != 0 {
+		t.Fatalf("fully-dropped read: got offset %d len %d, want offset %d len 0", emptyOff, len(emptyData), startIdx)
+	}
+
+	// reading a recent in-window offset returns the exact plaintext bytes
+	checkFileDataAt(t, ctx, zoneId, fileName, startIdx+25, full[startIdx+25:startIdx+25+40])
+
+	// backfill-style sequential read across many chunks reconstructs the tail
+	var rebuilt []byte
+	for off := startIdx; off < f.Size; off += partDataSize {
+		_, chunk, err := WFS.ReadAt(ctx, zoneId, fileName, off, partDataSize)
+		if err != nil {
+			t.Fatalf("backfill read error at %d: %v", off, err)
+		}
+		rebuilt = append(rebuilt, chunk...)
+	}
+	if string(rebuilt) != full[startIdx:] {
+		t.Fatalf("backfill reconstruction mismatch")
+	}
+}
+
+func TestSegmentedTruncate(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+	fileName := "segt"
+	if err := WFS.MakeFile(ctx, zoneId, fileName, nil, wshrpc.FileOpts{Segmented: true, Compressed: true, MaxSize: 500}); err != nil {
+		t.Fatalf("error creating segmented file: %v", err)
+	}
+	big := makeText(2000)
+	if err := WFS.AppendData(ctx, zoneId, fileName, []byte(big)); err != nil {
+		t.Fatalf("error appending: %v", err)
+	}
+	flushAndClear(t, ctx)
+	if statFile(t, ctx, zoneId, fileName).DataStartIdx() == 0 {
+		t.Fatalf("expected non-zero DataStartIdx before truncate")
+	}
+
+	// WriteFile replaces (truncates) the file -> Size=0, all chunks dropped
+	if err := WFS.WriteFile(ctx, zoneId, fileName, []byte("short")); err != nil {
+		t.Fatalf("error truncating: %v", err)
+	}
+	flushAndClear(t, ctx)
+	checkFileSize(t, ctx, zoneId, fileName, 5)
+	checkFileData(t, ctx, zoneId, fileName, "short")
+	if startIdx := statFile(t, ctx, zoneId, fileName).DataStartIdx(); startIdx != 0 {
+		t.Fatalf("expected DataStartIdx 0 after truncate, got %d", startIdx)
+	}
+	if got := segPartCount(t, ctx, zoneId, fileName); got != 1 {
+		t.Fatalf("expected 1 chunk row after truncate, got %d", got)
+	}
+}
+
+func TestSegmentedUnbounded(t *testing.T) {
+	initDb(t)
+	defer cleanupDb(t)
+
+	ctx, cancelFn := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFn()
+	zoneId := uuid.NewString()
+	fileName := "segu"
+	// MaxSize=0 => unbounded: nothing is ever dropped, DataStartIdx stays 0
+	if err := WFS.MakeFile(ctx, zoneId, fileName, nil, wshrpc.FileOpts{Segmented: true, Compressed: true}); err != nil {
+		t.Fatalf("error creating unbounded segmented file: %v", err)
+	}
+	full := makeText(1000)
+	for off := 0; off < len(full); off += 33 {
+		end := off + 33
+		if end > len(full) {
+			end = len(full)
+		}
+		if err := WFS.AppendData(ctx, zoneId, fileName, []byte(full[off:end])); err != nil {
+			t.Fatalf("error appending: %v", err)
+		}
+	}
+	flushAndClear(t, ctx)
+	checkFileSize(t, ctx, zoneId, fileName, int64(len(full)))
+	if startIdx := statFile(t, ctx, zoneId, fileName).DataStartIdx(); startIdx != 0 {
+		t.Fatalf("expected DataStartIdx 0 for unbounded file, got %d", startIdx)
+	}
+	checkFileData(t, ctx, zoneId, fileName, full)
+}

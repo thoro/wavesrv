@@ -62,7 +62,7 @@ func dbGetAllZoneIds(ctx context.Context) ([]string, error) {
 	})
 }
 
-func dbGetFileParts(ctx context.Context, zoneId string, name string, parts []int) (map[int]*DataCacheEntry, error) {
+func dbGetFileParts(ctx context.Context, zoneId string, name string, parts []int, compressed bool) (map[int]*DataCacheEntry, error) {
 	if len(parts) == 0 {
 		return nil, nil
 	}
@@ -72,6 +72,16 @@ func dbGetFileParts(ctx context.Context, zoneId string, name string, parts []int
 		tx.Select(&data, query, zoneId, name, dbutil.QuickJsonArr(parts))
 		rtn := make(map[int]*DataCacheEntry)
 		for _, d := range data {
+			// decompress BEFORE the partDataSize cap-normalization so the
+			// cache holds plaintext bytes capped to the part size (not the
+			// shorter compressed blob length)
+			if compressed {
+				plain, err := decompressPart(d.Data)
+				if err != nil {
+					return nil, fmt.Errorf("error decompressing part %d for %s:%s: %w", d.PartIdx, zoneId, name, err)
+				}
+				d.Data = plain
+			}
 			if cap(d.Data) != int(partDataSize) {
 				newData := make([]byte, len(d.Data), partDataSize)
 				copy(newData, d.Data)
@@ -110,7 +120,21 @@ func dbWriteCacheEntry(ctx context.Context, file *WaveFile, dataEntries map[int]
 			if partIdx != dataEntry.PartIdx {
 				panic(fmt.Sprintf("partIdx:%d and dataEntry.PartIdx:%d do not match", partIdx, dataEntry.PartIdx))
 			}
-			tx.Exec(dataPartQuery, file.ZoneId, file.Name, dataEntry.PartIdx, dataEntry.Data)
+			blob := dataEntry.Data
+			if file.Opts.Compressed {
+				blob = compressPart(dataEntry.Data)
+			}
+			tx.Exec(dataPartQuery, file.ZoneId, file.Name, dataEntry.PartIdx, blob)
+		}
+		// segmented retention: drop the chunk rows that have fallen out of the
+		// retention window so on-disk size stays bounded as the log grows.
+		// partidx never wraps, so DataStartIdx/partDataSize is the first seg we keep.
+		if file.Opts.Segmented && file.Opts.MaxSize > 0 {
+			firstSeg := file.DataStartIdx() / partDataSize
+			if firstSeg > 0 {
+				delQuery := `DELETE FROM db_file_data WHERE zoneid = ? AND name = ? AND partidx < ?`
+				tx.Exec(delQuery, file.ZoneId, file.Name, int(firstSeg))
+			}
 		}
 		return nil
 	})

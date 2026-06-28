@@ -65,19 +65,33 @@ type WaveFile struct {
 }
 
 // for regular files this is just Size
-// for circular files this is min(Size, MaxSize)
+// for circular and segmented files this is the number of currently retained bytes
 func (f WaveFile) DataLength() int64 {
 	if f.Opts.Circular {
 		return minInt64(f.Size, f.Opts.MaxSize)
+	}
+	if f.Opts.Segmented {
+		return f.Size - f.DataStartIdx()
 	}
 	return f.Size
 }
 
 // for regular files this is just 0
-// for circular files this is the index of the first byte of data we have
+// for circular files this is Size-MaxSize (the first byte still in the ring)
+// for segmented files this is the first byte of the oldest retained chunk
+// (part-aligned). retention drops whole chunk rows, so the start advances in
+// partDataSize steps and is derivable purely from Size & MaxSize.
 func (f WaveFile) DataStartIdx() int64 {
 	if f.Opts.Circular && f.Size > f.Opts.MaxSize {
 		return f.Size - f.Opts.MaxSize
+	}
+	if f.Opts.Segmented && f.Opts.MaxSize > 0 && f.Size > 0 {
+		maxParts := f.Opts.MaxSize / partDataSize
+		highestSeg := (f.Size - 1) / partDataSize
+		firstSeg := highestSeg + 1 - maxParts
+		if firstSeg > 0 {
+			return firstSeg * partDataSize
+		}
 	}
 	return 0
 }
@@ -122,7 +136,13 @@ func (s *FileStore) MakeFile(ctx context.Context, zoneId string, name string, me
 	if opts.Circular && opts.IJson {
 		return fmt.Errorf("circular file cannot be ijson")
 	}
-	if opts.Circular {
+	if opts.Segmented && opts.Circular {
+		return fmt.Errorf("file cannot be both segmented and circular")
+	}
+	if opts.Segmented && opts.IJson {
+		return fmt.Errorf("segmented file cannot be ijson")
+	}
+	if (opts.Circular || opts.Segmented) && opts.MaxSize > 0 {
 		if opts.MaxSize%partDataSize != 0 {
 			opts.MaxSize = (opts.MaxSize/partDataSize + 1) * partDataSize
 		}
@@ -252,7 +272,7 @@ func (s *FileStore) WriteAt(ctx context.Context, zoneId string, name string, off
 		}
 		partMap := file.computePartMap(offset, int64(len(data)))
 		incompleteParts := incompletePartsFromMap(partMap)
-		err = entry.loadDataPartsIntoCache(ctx, incompleteParts)
+		err = entry.loadDataPartsIntoCache(ctx, incompleteParts, file.Opts.Compressed)
 		if err != nil {
 			return err
 		}
@@ -270,7 +290,7 @@ func (s *FileStore) AppendData(ctx context.Context, zoneId string, name string, 
 		partMap := entry.File.computePartMap(entry.File.Size, int64(len(data)))
 		incompleteParts := incompletePartsFromMap(partMap)
 		if len(incompleteParts) > 0 {
-			err = entry.loadDataPartsIntoCache(ctx, incompleteParts)
+			err = entry.loadDataPartsIntoCache(ctx, incompleteParts, entry.File.Opts.Compressed)
 			if err != nil {
 				return err
 			}
@@ -336,7 +356,7 @@ func (s *FileStore) AppendIJson(ctx context.Context, zoneId string, name string,
 		partMap := entry.File.computePartMap(entry.File.Size, int64(len(data)))
 		incompleteParts := incompletePartsFromMap(partMap)
 		if len(incompleteParts) > 0 {
-			err = entry.loadDataPartsIntoCache(ctx, incompleteParts)
+			err = entry.loadDataPartsIntoCache(ctx, incompleteParts, entry.File.Opts.Compressed)
 			if err != nil {
 				return err
 			}
