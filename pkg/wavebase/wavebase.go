@@ -476,10 +476,14 @@ func getSystemSummary(ctx context.Context) string {
 	}
 }
 
+// job socket directory (per-uid) holding the <jobId>.sock job manager sockets
+func GetJobSocketDir() string {
+	return filepath.Join("/tmp", fmt.Sprintf("waveterm-%d", os.Getuid()))
+}
+
 // job socket path on remote machine
 func GetRemoteJobSocketPath(jobId string) string {
-	socketDir := filepath.Join("/tmp", fmt.Sprintf("waveterm-%d", os.Getuid()))
-	return filepath.Join(socketDir, fmt.Sprintf("%s.sock", jobId))
+	return filepath.Join(GetJobSocketDir(), fmt.Sprintf("%s.sock", jobId))
 }
 
 // job file path on remote machine

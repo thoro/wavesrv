@@ -582,6 +582,12 @@ export class RpcApiType {
         return client.wshRpcCall("jobcontrollerstartjob", data, opts);
     }
 
+    // command "jobcontrollersweepjobmanagers" [call]
+    JobControllerSweepJobManagersCommand(client: WshClient, data: boolean, opts?: RpcOpts): Promise<JobManagerSweepEntry[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "jobcontrollersweepjobmanagers", data, opts);
+        return client.wshRpcCall("jobcontrollersweepjobmanagers", data, opts);
+    }
+
     // command "jobinput" [call]
     JobInputCommand(client: WshClient, data: CommandJobInputData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "jobinput", data, opts);

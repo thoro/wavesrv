@@ -312,9 +312,9 @@ function getBlockTermDurableAtom(blockId: string): Atom<null | boolean> {
             return true;
         }
 
-        // 2. Check if connection is local or WSL (not eligible for durability)
+        // 2. Check if connection is WSL (not eligible for durability). Local shells ARE durable by default.
         const connName = block.meta?.connection ?? "";
-        if (isLocalConnName(connName) || isWslConnName(connName)) {
+        if (isWslConnName(connName)) {
             return null;
         }
 

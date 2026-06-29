@@ -1586,6 +1586,10 @@ func (ws *WshServer) JobControllerDetachJobCommand(ctx context.Context, jobId st
 	return jobcontroller.DetachJobFromBlock(ctx, jobId, true)
 }
 
+func (ws *WshServer) JobControllerSweepJobManagersCommand(ctx context.Context, reap bool) ([]*wshrpc.JobManagerSweepEntry, error) {
+	return jobcontroller.SweepOrphanedJobManagers(ctx, reap)
+}
+
 func (ws *WshServer) BlockJobStatusCommand(ctx context.Context, blockId string) (*wshrpc.BlockJobStatusData, error) {
 	return jobcontroller.GetBlockJobStatus(ctx, blockId)
 }

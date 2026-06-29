@@ -211,6 +211,7 @@ type WshRpcInterface interface {
 	JobControllerAttachJobCommand(ctx context.Context, data CommandJobControllerAttachJobData) error
 	JobControllerDetachJobCommand(ctx context.Context, jobId string) error
 	JobControllerGetAllJobManagerStatusCommand(ctx context.Context) ([]*JobManagerStatusUpdate, error)
+	JobControllerSweepJobManagersCommand(ctx context.Context, reap bool) ([]*JobManagerSweepEntry, error)
 	BlockJobStatusCommand(ctx context.Context, blockId string) (*BlockJobStatusData, error)
 }
 
@@ -825,6 +826,19 @@ type CommandJobControllerAttachJobData struct {
 type JobManagerStatusUpdate struct {
 	JobId            string `json:"jobid"`
 	JobManagerStatus string `json:"jobmanagerstatus"`
+}
+
+// JobManagerSweepEntry describes one job manager socket discovered in the local
+// job socket directory and the action taken (or available) for it.
+type JobManagerSweepEntry struct {
+	JobId         string `json:"jobid"`
+	SocketPath    string `json:"socketpath"`
+	Alive         bool   `json:"alive"`     // socket is dialable
+	HasRecord     bool   `json:"hasrecord"` // a Job record exists in the store
+	State         string `json:"state"`     // backed, orphan-detached, orphan-norecord, stale-socket, reaped
+	Reaped        bool   `json:"reaped,omitempty"`
+	JobManagerPid int    `json:"jobmanagerpid,omitempty"`
+	Connection    string `json:"connection,omitempty"`
 }
 
 type CommandWaveFileReadStreamData struct {

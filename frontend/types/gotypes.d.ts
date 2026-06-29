@@ -1066,6 +1066,18 @@ declare global {
         jobmanagerstatus: string;
     };
 
+    // wshrpc.JobManagerSweepEntry
+    type JobManagerSweepEntry = {
+        jobid: string;
+        socketpath: string;
+        alive: boolean;
+        hasrecord: boolean;
+        state: string;
+        reaped?: boolean;
+        jobmanagerpid?: number;
+        connection?: string;
+    };
+
     // waveobj.LayoutActionData
     type LayoutActionData = {
         actiontype: string;

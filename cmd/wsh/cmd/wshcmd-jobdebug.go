@@ -101,6 +101,12 @@ var jobDebugBlockAttachmentCmd = &cobra.Command{
 	RunE:  jobDebugBlockAttachmentRun,
 }
 
+var jobDebugSweepCmd = &cobra.Command{
+	Use:   "sweep",
+	Short: "list local job manager sockets and their orphan state (use --reap to terminate orphans)",
+	RunE:  jobDebugSweepRun,
+}
+
 var jobIdFlag string
 var jobDebugJsonFlag bool
 var jobConnFlag string
@@ -111,6 +117,7 @@ var reconnectConnNameFlag string
 var attachJobIdFlag string
 var attachBlockIdFlag string
 var detachJobIdFlag string
+var jobDebugSweepReapFlag bool
 
 func init() {
 	rootCmd.AddCommand(jobDebugCmd)
@@ -127,8 +134,12 @@ func init() {
 	jobDebugCmd.AddCommand(jobDebugAttachJobCmd)
 	jobDebugCmd.AddCommand(jobDebugDetachJobCmd)
 	jobDebugCmd.AddCommand(jobDebugBlockAttachmentCmd)
+	jobDebugCmd.AddCommand(jobDebugSweepCmd)
 
 	jobDebugListCmd.Flags().BoolVar(&jobDebugJsonFlag, "json", false, "output as JSON")
+
+	jobDebugSweepCmd.Flags().BoolVar(&jobDebugSweepReapFlag, "reap", false, "terminate orphaned job managers and remove stale sockets")
+	jobDebugSweepCmd.Flags().BoolVar(&jobDebugJsonFlag, "json", false, "output as JSON")
 
 	jobDebugDeleteCmd.Flags().StringVar(&jobIdFlag, "jobid", "", "job id to delete (required)")
 	jobDebugDeleteCmd.MarkFlagRequired("jobid")
@@ -424,6 +435,37 @@ func jobDebugDetachJobRun(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Job %s detached successfully\n", detachJobIdFlag)
+	return nil
+}
+
+func jobDebugSweepRun(cmd *cobra.Command, args []string) error {
+	entries, err := wshclient.JobControllerSweepJobManagersCommand(RpcClient, jobDebugSweepReapFlag, &wshrpc.RpcOpts{Timeout: 30000})
+	if err != nil {
+		return fmt.Errorf("sweeping job managers: %w", err)
+	}
+
+	if jobDebugJsonFlag {
+		jsonData, err := json.MarshalIndent(entries, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling json: %w", err)
+		}
+		fmt.Printf("%s\n", string(jsonData))
+		return nil
+	}
+
+	if len(entries) == 0 {
+		fmt.Printf("No job manager sockets found\n")
+		return nil
+	}
+
+	fmt.Printf("%-36s %-6s %-9s %-8s %-16s %s\n", "JobId", "Alive", "HasRecord", "Pid", "State", "Connection")
+	for _, e := range entries {
+		pid := "-"
+		if e.JobManagerPid > 0 {
+			pid = fmt.Sprintf("%d", e.JobManagerPid)
+		}
+		fmt.Printf("%-36s %-6t %-9t %-8s %-16s %s\n", e.JobId, e.Alive, e.HasRecord, pid, e.State, e.Connection)
+	}
 	return nil
 }
 

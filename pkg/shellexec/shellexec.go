@@ -36,6 +36,16 @@ import (
 
 const DefaultGracefulKillWait = 400 * time.Millisecond
 
+// ShellJobConn is the minimal connection surface StartRemoteShellJob needs.
+// *conncontroller.SSHConn satisfies it for remote connections, and a local
+// adapter satisfies it for durable local shells (which have no SSH connection).
+type ShellJobConn interface {
+	GetName() string
+	GetConfigShellPath() string
+	Infof(ctx context.Context, format string, args ...any)
+	Debugf(ctx context.Context, format string, args ...any)
+}
+
 type CommandOptsType struct {
 	Interactive bool                      `json:"interactive,omitempty"`
 	Login       bool                      `json:"login,omitempty"`
@@ -469,7 +479,7 @@ func StartRemoteShellProc(ctx context.Context, logCtx context.Context, termSize 
 	return &ShellProc{Cmd: sessionWrap, ConnName: conn.GetName(), CloseOnce: &sync.Once{}, DoneCh: make(chan any)}, nil
 }
 
-func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize waveobj.TermSize, cmdStr string, cmdOpts CommandOptsType, conn *conncontroller.SSHConn, optBlockId string) (string, error) {
+func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize waveobj.TermSize, cmdStr string, cmdOpts CommandOptsType, conn ShellJobConn, optBlockId string) (string, error) {
 	connRoute := wshutil.MakeConnectionRouteId(conn.GetName())
 	rpcClient := wshclient.GetBareRpcClient()
 	remoteInfo, err := wshclient.RemoteGetInfoCommand(rpcClient, &wshrpc.RpcOpts{Route: connRoute, Timeout: 2000})

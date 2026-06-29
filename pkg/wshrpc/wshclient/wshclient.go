@@ -580,6 +580,12 @@ func JobControllerStartJobCommand(w *wshutil.WshRpc, data wshrpc.CommandJobContr
 	return resp, err
 }
 
+// command "jobcontrollersweepjobmanagers", wshserver.JobControllerSweepJobManagersCommand
+func JobControllerSweepJobManagersCommand(w *wshutil.WshRpc, data bool, opts *wshrpc.RpcOpts) ([]*wshrpc.JobManagerSweepEntry, error) {
+	resp, err := sendRpcRequestCallHelper[[]*wshrpc.JobManagerSweepEntry](w, "jobcontrollersweepjobmanagers", data, opts)
+	return resp, err
+}
+
 // command "jobinput", wshserver.JobInputCommand
 func JobInputCommand(w *wshutil.WshRpc, data wshrpc.CommandJobInputData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "jobinput", data, opts)

@@ -142,10 +142,6 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 		return fmt.Errorf("error getting block: %w", err)
 	}
 
-	if conncontroller.IsLocalConnName(dsc.ConnName) {
-		return fmt.Errorf("durable shell controller requires a remote connection")
-	}
-
 	var jobId string
 	if blockData.JobId != "" {
 		status, err := jobcontroller.GetJobManagerStatus(ctx, blockData.JobId)
@@ -234,13 +230,19 @@ func (dsc *DurableShellController) startNewJob(ctx context.Context, blockMeta wa
 	}
 	cmdStr := blockMeta.GetString(waveobj.MetaKey_Cmd, "")
 	cwd := blockMeta.GetString(waveobj.MetaKey_CmdCwd, "")
-	opts, err := remote.ParseOpts(connName)
-	if err != nil {
-		return "", fmt.Errorf("invalid ssh remote name (%s): %w", connName, err)
-	}
-	conn := conncontroller.MaybeGetConn(opts)
-	if conn == nil {
-		return "", fmt.Errorf("connection %q not found", connName)
+	var shellConn shellexec.ShellJobConn
+	if conncontroller.IsLocalConnName(connName) {
+		shellConn = &localShellJobConn{connName: connName}
+	} else {
+		opts, err := remote.ParseOpts(connName)
+		if err != nil {
+			return "", fmt.Errorf("invalid ssh remote name (%s): %w", connName, err)
+		}
+		conn := conncontroller.MaybeGetConn(opts)
+		if conn == nil {
+			return "", fmt.Errorf("connection %q not found", connName)
+		}
+		shellConn = conn
 	}
 	connRoute := wshutil.MakeConnectionRouteId(connName)
 	remoteInfo, err := wshclient.RemoteGetInfoCommand(wshclient.GetBareRpcClient(), &wshrpc.RpcOpts{Route: connRoute, Timeout: 2000})
@@ -269,9 +271,29 @@ func (dsc *DurableShellController) startNewJob(ctx context.Context, blockMeta wa
 		SwapToken:   swapToken,
 		ForceJwt:    blockMeta.GetBool(waveobj.MetaKey_CmdJwt, false),
 	}
-	jobId, err := shellexec.StartRemoteShellJob(ctx, ctx, termSize, cmdStr, cmdOpts, conn, dsc.BlockId)
+	jobId, err := shellexec.StartRemoteShellJob(ctx, ctx, termSize, cmdStr, cmdOpts, shellConn, dsc.BlockId)
 	if err != nil {
 		return "", fmt.Errorf("failed to start durable shell: %w", err)
 	}
 	return jobId, nil
+}
+
+// localShellJobConn adapts the in-process local connection to the
+// shellexec.ShellJobConn interface so durable shells can run locally
+// without an SSHConn. Local shell path detection happens via the local
+// connserver route, so GetConfigShellPath returns empty here.
+type localShellJobConn struct {
+	connName string
+}
+
+func (c *localShellJobConn) GetName() string { return c.connName }
+
+func (c *localShellJobConn) GetConfigShellPath() string { return "" }
+
+func (c *localShellJobConn) Infof(ctx context.Context, format string, args ...any) {
+	log.Printf("[conn:%s] "+format, append([]any{c.connName}, args...)...)
+}
+
+func (c *localShellJobConn) Debugf(ctx context.Context, format string, args ...any) {
+	log.Printf("[conn:%s] "+format, append([]any{c.connName}, args...)...)
 }

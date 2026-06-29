@@ -10,6 +10,9 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +67,16 @@ const (
 	JobKind_Shell = "shell"
 	JobKind_Task  = "task"
 )
+
+const (
+	JobManagerSweepState_Backed         = "backed"
+	JobManagerSweepState_OrphanDetached = "orphan-detached"
+	JobManagerSweepState_OrphanNoRecord = "orphan-norecord"
+	JobManagerSweepState_StaleSocket    = "stale-socket"
+	JobManagerSweepState_Reaped         = "reaped"
+)
+
+const JobSocketDialTimeout = 500 * time.Millisecond
 
 const DefaultStreamRwnd = 64 * 1024
 const MetaKey_TotalGap = "totalgap"
@@ -134,6 +147,40 @@ func InitJobController() {
 		Event:     wps.Event_BlockClose,
 		AllScopes: true,
 	}, nil)
+
+	// The local connection is in-process and never emits Event_ConnChange, so
+	// local durable jobs would not be auto-readopted after a restart. We reap
+	// true orphans first, then seed the local connection as "up" to drive
+	// re-adoption of the remaining (valid) running local jobs via the normal
+	// reconcile path. The sweep runs before seeding so reaped orphans are
+	// already marked done and skipped by the reconnect pass.
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("jobcontroller:startupSweep", recover())
+		}()
+		ctx, cancelFn := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancelFn()
+		if _, err := SweepOrphanedJobManagers(ctx, true); err != nil {
+			log.Printf("[jobsweep] startup sweep error: %v", err)
+		}
+		seedLocalConnUp()
+	}()
+}
+
+func seedLocalConnUp() {
+	connStates.Lock()
+	cs, exists := connStates.m[wshrpc.LocalConnName]
+	if !exists {
+		cs = &connState{}
+		connStates.m[wshrpc.LocalConnName] = cs
+	}
+	cs.actual = true
+	connStates.Unlock()
+
+	select {
+	case connStates.reconcileCh <- struct{}{}:
+	default:
+	}
 }
 
 func isJobManagerRunning(job *waveobj.Job) bool {
@@ -344,6 +391,116 @@ func pruneUnusedJobs(previousCandidates []string) []string {
 	}
 
 	return currentCandidates
+}
+
+// SweepOrphanedJobManagers enumerates the local job manager sockets for this
+// data home and classifies each against the Job store. When reap is true,
+// orphaned managers that still have a backing Job record (so we have
+// pid+startTs) are terminated and their records deleted, and stale socket files
+// with no live listener are removed.
+//
+// Valid running local jobs that remain attached to a live block are classified
+// "backed" and left untouched so the re-adoption path (seedLocalConnUp) can
+// reconnect them. The orphan classification keys off live block attachment, not
+// process liveness, so a valid job is never reaped regardless of ordering
+// relative to seedLocalConnUp.
+func SweepOrphanedJobManagers(ctx context.Context, reap bool) ([]*wshrpc.JobManagerSweepEntry, error) {
+	socketDir := wavebase.GetJobSocketDir()
+	dirEntries, err := os.ReadDir(socketDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read job socket dir %q: %w", socketDir, err)
+	}
+
+	allJobs, err := wstore.DBGetAllObjsByType[*waveobj.Job](ctx, waveobj.OType_Job)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get jobs: %w", err)
+	}
+	jobsById := make(map[string]*waveobj.Job, len(allJobs))
+	for _, job := range allJobs {
+		jobsById[job.OID] = job
+	}
+
+	var entries []*wshrpc.JobManagerSweepEntry
+	for _, de := range dirEntries {
+		name := de.Name()
+		if !strings.HasSuffix(name, ".sock") {
+			continue
+		}
+		jobId := strings.TrimSuffix(name, ".sock")
+		socketPath := filepath.Join(socketDir, name)
+		entry := &wshrpc.JobManagerSweepEntry{
+			JobId:      jobId,
+			SocketPath: socketPath,
+			Alive:      isJobSocketAlive(socketPath),
+		}
+		job := jobsById[jobId]
+		if job != nil {
+			entry.HasRecord = true
+			entry.JobManagerPid = job.JobManagerPid
+			entry.Connection = job.Connection
+			if jobManagerIsOrphan(ctx, job) {
+				entry.State = JobManagerSweepState_OrphanDetached
+				if reap {
+					log.Printf("[jobsweep] reaping orphaned local job manager job:%s pid:%d (no live block)", jobId, job.JobManagerPid)
+					TerminateAndDetachJob(ctx, jobId)
+					if delErr := DeleteJob(ctx, jobId); delErr != nil {
+						log.Printf("[jobsweep] error deleting orphaned job %s: %v", jobId, delErr)
+					}
+					entry.Reaped = true
+					entry.State = JobManagerSweepState_Reaped
+				}
+			} else {
+				entry.State = JobManagerSweepState_Backed
+			}
+		} else if entry.Alive {
+			// Live job manager with no backing Job record: we cannot derive its
+			// pid to terminate it safely, so surface it for manual handling
+			// rather than removing the socket (which would orphan it harder).
+			entry.State = JobManagerSweepState_OrphanNoRecord
+			log.Printf("[jobsweep] WARNING leaked job manager socket with no Job record: %s (inspect with 'wsh jobdebug sweep')", socketPath)
+		} else {
+			entry.State = JobManagerSweepState_StaleSocket
+			if reap {
+				log.Printf("[jobsweep] removing stale job manager socket: %s", socketPath)
+				os.Remove(socketPath)
+			}
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func isJobSocketAlive(socketPath string) bool {
+	conn, err := net.DialTimeout("unix", socketPath, JobSocketDialTimeout)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// jobManagerIsOrphan reports whether a running local job's manager has nothing
+// in the UI referencing it (detached, or attached to a block that no longer
+// exists). Such managers will never be re-adopted and should be reaped.
+func jobManagerIsOrphan(ctx context.Context, job *waveobj.Job) bool {
+	if !conncontroller.IsLocalConnName(job.Connection) {
+		return false
+	}
+	if job.JobManagerStatus != JobManagerStatus_Running {
+		return false
+	}
+	if job.AttachedBlockId == "" {
+		return true
+	}
+	block, err := wstore.DBGet[*waveobj.Block](ctx, job.AttachedBlockId)
+	if err != nil {
+		// on lookup error, be conservative and treat as backed (do not reap)
+		return false
+	}
+	return block == nil
 }
 
 func handleRouteUpEvent(event *wps.WaveEvent) {
@@ -1360,9 +1517,9 @@ func IsBlockTermDurable(block *waveobj.Block) bool {
 		return true
 	}
 
-	// 2. Check if connection is local or WSL (not durable)
+	// 2. Check if connection is WSL (not durable). Local shells ARE durable by default.
 	connName := block.Meta.GetString(waveobj.MetaKey_Connection, "")
-	if conncontroller.IsLocalConnName(connName) || conncontroller.IsWslConnName(connName) {
+	if conncontroller.IsWslConnName(connName) {
 		return false
 	}
 
