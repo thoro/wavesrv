@@ -543,6 +543,15 @@ func main() {
 	if firstLaunch {
 		log.Printf("first launch detected")
 	}
+	// Self-heal orphaned blocks (empty/unparseable parentoref, or a parent chain
+	// that no longer reaches a live tab) before any client connects and resolves
+	// block controllers. An orphan otherwise makes DBFindTabForBlockId fail and
+	// bricks the whole bootstrap. Best-effort: a GC hiccup must not block startup.
+	gcCtx, gcCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if gcErr := wcore.GCOrphanedBlocks(gcCtx); gcErr != nil {
+		log.Printf("error gc'ing orphaned blocks: %v\n", gcErr)
+	}
+	gcCancel()
 	err = clearTempFiles()
 	if err != nil {
 		log.Printf("error clearing temp files: %v\n", err)

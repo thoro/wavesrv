@@ -491,21 +491,24 @@ func (ws *WshServer) DeleteBlockCommand(ctx context.Context, data wshrpc.Command
 		return fmt.Errorf("blockid is required")
 	}
 	ctx = waveobj.ContextWithUpdates(ctx)
+	// A block with a bad/empty parentoref (orphan) cannot resolve its tab. Treat it
+	// as "gone": still delete it so it disappears, but skip the per-tab layout action
+	// (there is no live tab to queue it against) instead of failing the whole call.
 	tabId, err := wstore.DBFindTabForBlockId(ctx, data.BlockId)
 	if err != nil {
-		return fmt.Errorf("error finding tab for block: %w", err)
-	}
-	if tabId == "" {
-		return fmt.Errorf("no tab found for block")
+		log.Printf("DeleteBlockCommand: could not find tab for block %s (treating as orphan): %v", data.BlockId, err)
+		tabId = ""
 	}
 	err = wcore.DeleteBlock(ctx, data.BlockId, true)
 	if err != nil {
 		return fmt.Errorf("error deleting block: %w", err)
 	}
-	wcore.QueueLayoutActionForTab(ctx, tabId, waveobj.LayoutActionData{
-		ActionType: wcore.LayoutActionDataType_Remove,
-		BlockId:    data.BlockId,
-	})
+	if tabId != "" {
+		wcore.QueueLayoutActionForTab(ctx, tabId, waveobj.LayoutActionData{
+			ActionType: wcore.LayoutActionDataType_Remove,
+			BlockId:    data.BlockId,
+		})
+	}
 	updates := waveobj.ContextGetUpdatesRtn(ctx)
 	wps.Broker.SendUpdateEvents(updates)
 	return nil
@@ -823,13 +826,21 @@ func (ws *WshServer) BlockInfoCommand(ctx context.Context, blockId string) (*wsh
 	if err != nil {
 		return nil, fmt.Errorf("error getting block: %w", err)
 	}
+	// An orphaned block (bad/empty parentoref) cannot resolve its tab/workspace.
+	// Return the block info with empty tab/workspace rather than failing the whole
+	// call, so a single dead block never bricks a load that fetches block info.
 	tabId, err := wstore.DBFindTabForBlockId(ctx, blockId)
 	if err != nil {
-		return nil, fmt.Errorf("error finding tab for block: %w", err)
+		log.Printf("BlockInfoCommand: could not find tab for block %s (treating as orphan): %v", blockId, err)
+		tabId = ""
 	}
-	workspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, tabId)
-	if err != nil {
-		return nil, fmt.Errorf("error finding window for tab: %w", err)
+	workspaceId := ""
+	if tabId != "" {
+		workspaceId, err = wstore.DBFindWorkspaceForTabId(ctx, tabId)
+		if err != nil {
+			log.Printf("BlockInfoCommand: could not find workspace for tab %s: %v", tabId, err)
+			workspaceId = ""
+		}
 	}
 	fileList, err := filestore.WFS.ListFiles(ctx, blockId)
 	if err != nil {
