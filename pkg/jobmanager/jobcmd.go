@@ -22,6 +22,7 @@ type CmdDef struct {
 	Cmd      string
 	Args     []string
 	Env      map[string]string
+	Cwd      string
 	TermSize waveobj.TermSize
 }
 
@@ -53,6 +54,9 @@ func MakeJobCmd(jobId string, cmdDef CmdDef) (*JobCmd, error) {
 		return nil, fmt.Errorf("invalid term size: %v", cmdDef.TermSize)
 	}
 	ecmd := exec.Command(cmdDef.Cmd, cmdDef.Args...)
+	if cmdDef.Cwd != "" {
+		ecmd.Dir = cmdDef.Cwd
+	}
 	if len(cmdDef.Env) > 0 {
 		ecmd.Env = make([]string, 0, len(cmdDef.Env))
 		for key, val := range cmdDef.Env {

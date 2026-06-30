@@ -265,6 +265,7 @@ func (impl *ServerImpl) RemoteStartJobCommand(ctx context.Context, data wshrpc.C
 		Cmd:        data.Cmd,
 		Args:       data.Args,
 		Env:        combinedEnv,
+		Cwd:        data.Cwd,
 		TermSize:   data.TermSize,
 		StreamMeta: data.StreamMeta,
 	}

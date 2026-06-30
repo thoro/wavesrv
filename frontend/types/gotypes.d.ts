@@ -603,6 +603,7 @@ declare global {
         cmd: string;
         args: string[];
         env: {[key: string]: string};
+        cwd?: string;
         termsize: TermSize;
         streammeta?: StreamMeta;
         jobauthtoken: string;
@@ -665,6 +666,7 @@ declare global {
         cmd: string;
         args: string[];
         env: {[key: string]: string};
+        cwd?: string;
         termsize: TermSize;
         streammeta?: StreamMeta;
     };

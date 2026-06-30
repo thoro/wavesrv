@@ -579,6 +579,7 @@ func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize w
 		Cmd:      shellPath,
 		Args:     shellOpts,
 		Env:      env,
+		Cwd:      cmdOpts.Cwd,
 		TermSize: &termSize,
 		BlockId:  optBlockId,
 	}

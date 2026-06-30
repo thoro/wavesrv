@@ -150,6 +150,14 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 		}
 		if status == jobcontroller.JobManagerStatus_Running {
 			jobId = blockData.JobId
+		} else if status == jobcontroller.JobManagerStatus_Done {
+			// The durable job manager is gone (e.g. it died together with a wavesrv
+			// restart). There is nothing live to reconnect to, so always re-create the
+			// shell rather than leaving a dead empty pane — even when force=false (the
+			// usual restart-resync path). startNewJob seeds Cwd from the block's
+			// cmd:cwd meta, so the recreated shell returns to its last working dir.
+			log.Printf("block %q durable job %s is done; starting a fresh shell (restoring cwd from meta)\n", dsc.BlockId, blockData.JobId)
+			// leave jobId empty to start a new job below
 		} else if !force {
 			log.Printf("block %q has jobId %s but manager is not running (status: %s), not starting (force=false)\n", dsc.BlockId, blockData.JobId, status)
 			return nil
@@ -232,6 +240,13 @@ func (dsc *DurableShellController) startNewJob(ctx context.Context, blockMeta wa
 	cwd := blockMeta.GetString(waveobj.MetaKey_CmdCwd, "")
 	var shellConn shellexec.ShellJobConn
 	if conncontroller.IsLocalConnName(connName) {
+		// Local blocks carry no "connection" meta, so connName arrives empty. The
+		// in-process local connserver is registered under the canonical "local" route
+		// (cmd/server/main-server.go RegisterTrustedLeaf "conn:local"). Normalize
+		// empty→local so connRoute is "conn:local" and the stored job.Connection
+		// reconnects to the same route — otherwise the route is "conn:" with no
+		// handler and RemoteGetInfoCommand fails ("no rpc for route id conn:").
+		connName = wshrpc.LocalConnName
 		shellConn = &localShellJobConn{connName: connName}
 	} else {
 		opts, err := remote.ParseOpts(connName)

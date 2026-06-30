@@ -763,6 +763,7 @@ type StartJobParams struct {
 	Cmd      string
 	Args     []string
 	Env      map[string]string
+	Cwd      string
 	TermSize *waveobj.TermSize
 	BlockId  string
 }
@@ -854,6 +855,7 @@ func StartJob(ctx context.Context, params StartJobParams) (string, error) {
 		Cmd:                params.Cmd,
 		Args:               params.Args,
 		Env:                jobEnv,
+		Cwd:                params.Cwd,
 		TermSize:           *params.TermSize,
 		StreamMeta:         streamMeta,
 		JobAuthToken:       jobAuthToken,

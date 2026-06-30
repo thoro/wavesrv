@@ -231,6 +231,7 @@ func (jm *JobManager) StartJob(msc *MainServerConn, data wshrpc.CommandStartJobD
 		Cmd:      data.Cmd,
 		Args:     data.Args,
 		Env:      data.Env,
+		Cwd:      data.Cwd,
 		TermSize: data.TermSize,
 	}
 	log.Printf("StartJob: creating job cmd for jobid=%s", jm.JobId)
