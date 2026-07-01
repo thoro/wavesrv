@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"os/exec"
 	"runtime"
@@ -16,8 +17,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"maps"
 
 	"github.com/creack/pty"
 	"github.com/wavetermdev/waveterm/pkg/blocklogger"
@@ -114,7 +113,6 @@ func ExitCodeFromWaitErr(err error) int {
 		}
 	}
 	return -1
-
 }
 
 func checkCwd(cwd string) error {
@@ -515,19 +513,35 @@ func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize w
 	conn.Infof(logCtx, "detected shell type: %s\n", shellType)
 	conn.Debugf(logCtx, "cmdStr: %q\n", cmdStr)
 
+	// A LOCAL durable shell's integration files live in the wave data dir
+	// (`GetLocalBashRcFileOverride` etc.), which wave-native relocates via
+	// WAVETERM_DATA_HOME — NOT under $HOME/.waveterm. Only a REMOTE shell has the
+	// integration copied under the remote home. Using HomeDir/.waveterm locally pointed
+	// --rcfile / ZDOTDIR at a nonexistent path, so the shell loaded no integration at all
+	// (default prompt, no OSC 7 → no cwd reporting).
+	isLocal := conncontroller.IsLocalConnName(conn.GetName())
 	if cmdStr == "" {
 		if shellType == shellutil.ShellType_bash {
 			bashPath := fmt.Sprintf("%s/.waveterm/%s/.bashrc", remoteInfo.HomeDir, shellutil.BashIntegrationDir)
+			if isLocal {
+				bashPath = shellutil.GetLocalBashRcFileOverride()
+			}
 			shellOpts = append(shellOpts, "--rcfile", bashPath)
 		} else if shellType == shellutil.ShellType_fish {
 			if cmdOpts.Login {
 				shellOpts = append(shellOpts, "-l")
 			}
 			waveFishPath := fmt.Sprintf("%s/.waveterm/%s/wave.fish", remoteInfo.HomeDir, shellutil.FishIntegrationDir)
+			if isLocal {
+				waveFishPath = shellutil.GetLocalWaveFishFilePath()
+			}
 			carg := fmt.Sprintf(`source %s`, waveFishPath)
 			shellOpts = append(shellOpts, "-C", carg)
 		} else if shellType == shellutil.ShellType_pwsh {
 			pwshPath := fmt.Sprintf("%s/.waveterm/%s/wavepwsh.ps1", remoteInfo.HomeDir, shellutil.PwshIntegrationDir)
+			if isLocal {
+				pwshPath = shellutil.GetLocalWavePowershellEnv()
+			}
 			shellOpts = append(shellOpts, "-ExecutionPolicy", "Bypass", "-NoExit", "-File", pwshPath)
 		} else {
 			if cmdOpts.Login {
@@ -554,6 +568,9 @@ func StartRemoteShellJob(ctx context.Context, logCtx context.Context, termSize w
 	env["TERM"] = shellutil.DefaultTermType
 	if shellType == shellutil.ShellType_zsh {
 		zshDir := fmt.Sprintf("%s/.waveterm/%s", remoteInfo.HomeDir, shellutil.ZshIntegrationDir)
+		if isLocal {
+			zshDir = shellutil.GetLocalZshZDotDir()
+		}
 		conn.Infof(logCtx, "setting ZDOTDIR to %s\n", zshDir)
 		env["ZDOTDIR"] = zshDir
 	}
@@ -737,9 +754,11 @@ func RunSimpleCmdInPty(ecmd *exec.Cmd, termSize waveobj.TermSize) ([]byte, error
 	return outputBuf.Bytes(), nil
 }
 
-const etcEnvironmentPath = "/etc/environment"
-const etcSecurityPath = "/etc/security/pam_env.conf"
-const userEnvironmentPath = "~/.pam_environment"
+const (
+	etcEnvironmentPath  = "/etc/environment"
+	etcSecurityPath     = "/etc/security/pam_env.conf"
+	userEnvironmentPath = "~/.pam_environment"
+)
 
 var pamParseOpts *pamparse.PamParseOpts = pamparse.ParsePasswdSafe()
 
