@@ -56,6 +56,12 @@ const (
 )
 
 const HttpReadTimeout = 5 * time.Second
+
+// Unix-socket serving talks only to our own trusted local client (0700 socket, no
+// slow-loris exposure). A heavily loaded client process can connect early and get
+// its request write scheduled seconds later; a 5s read deadline then closes the
+// connection with a zero-byte response.
+const HttpUnixReadTimeout = 60 * time.Second
 const HttpWriteTimeout = 21 * time.Second
 const HttpMaxHeaderBytes = 60000
 const HttpTimeoutDuration = 21 * time.Second
@@ -612,8 +618,12 @@ func RunWebServer(listener net.Listener) {
 			originalHandler.ServeHTTP(w, r)
 		})
 	}
+	readTimeout := HttpReadTimeout
+	if listener.Addr().Network() == "unix" {
+		readTimeout = HttpUnixReadTimeout
+	}
 	server := &http.Server{
-		ReadTimeout:    HttpReadTimeout,
+		ReadTimeout:    readTimeout,
 		WriteTimeout:   HttpWriteTimeout,
 		MaxHeaderBytes: HttpMaxHeaderBytes,
 		Handler:        handler,
