@@ -66,6 +66,9 @@ func (r *Reader) RecvData(dataPk wshrpc.CommandStreamData) {
 	}
 
 	if dataPk.Seq < r.nextSeq {
+		// duplicate from a sender-side retransmission: our ack for this data
+		// was lost, so re-ack the current position to unstick its window
+		r.sendAckLocked(r.eof, false, "")
 		return
 	}
 	if dataPk.Seq > r.nextSeq {

@@ -346,3 +346,68 @@ func (sr *slowReader) Read(p []byte) (n int, err error) {
 
 	return n, nil
 }
+
+// a packet (or its ack) lost on the fire-and-forget link must not deadlock
+// the stream: with no ack progress the manager retransmits the unacked window
+func TestRetransmitAfterLostPacket(t *testing.T) {
+	tw := &testWriter{}
+	sm := MakeStreamManagerWithSizes(CwndSize, CirBufSize)
+	defer sm.Close()
+	sm.lock.Lock()
+	sm.retransmitTimeout = 50 * time.Millisecond
+	sm.lock.Unlock()
+
+	pr, pw := io.Pipe()
+	if err := sm.AttachReader(pr); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	if _, err := sm.ClientConnected("s1", tw, CwndSize, 0); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+
+	if _, err := pw.Write([]byte("hello world")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// first transmission arrives; pretend it was LOST (never ack it)
+	deadline := time.Now().Add(2 * time.Second)
+	for len(tw.GetPackets()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	first := tw.GetPackets()
+	if len(first) == 0 {
+		t.Fatalf("no initial packet sent")
+	}
+	if decodeData(first[0].Data64) != "hello world" {
+		t.Fatalf("unexpected first packet: %q", decodeData(first[0].Data64))
+	}
+	tw.Clear()
+
+	// with no ack progress, the window must be retransmitted from seq 0
+	deadline = time.Now().Add(2 * time.Second)
+	for len(tw.GetPackets()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	resent := tw.GetPackets()
+	if len(resent) == 0 {
+		t.Fatalf("packet was not retransmitted after ack stall")
+	}
+	if resent[0].Seq != 0 || decodeData(resent[0].Data64) != "hello world" {
+		t.Fatalf("bad retransmission: seq=%d data=%q", resent[0].Seq, decodeData(resent[0].Data64))
+	}
+
+	// acking the retransmission unsticks the stream: new data flows again
+	sm.RecvAck(wshrpc.CommandStreamAckData{Id: "s1", Seq: 11, RWnd: CwndSize})
+	tw.Clear()
+	if _, err := pw.Write([]byte("more")); err != nil {
+		t.Fatalf("write2: %v", err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for len(tw.GetPackets()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	after := tw.GetPackets()
+	if len(after) == 0 || after[0].Seq != 11 || decodeData(after[0].Data64) != "more" {
+		t.Fatalf("stream did not resume after retransmit+ack: %+v", after)
+	}
+}

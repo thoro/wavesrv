@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
@@ -18,6 +19,15 @@ const (
 	CirBufSize    = 2 * 1024 * 1024 // 2 MB max buffer size
 	DisconnReadSz = 4 * 1024        // 4 KB read chunks when disconnected
 	MaxPacketSize = 4 * 1024        // 4 KB max data per packet
+
+	// how long to wait for ACK progress on in-flight data before assuming a
+	// packet (or its ack) was lost and retransmitting the unacked window.
+	// SendData is fire-and-forget over the rpc link, so a send that errors
+	// (e.g. "timeout sending request" under burst backpressure) silently
+	// drops the packet -- without retransmission the receiver never acks past
+	// the gap, the window fills, and the stream deadlocks until reconnect.
+	RetransmitTimeout = 3 * time.Second
+	retransmitPoll    = time.Second
 )
 
 type DataSender interface {
@@ -57,6 +67,11 @@ type StreamManager struct {
 	maxAckedSeq  int64
 	maxAckedRwnd int64
 
+	// last time an ack made progress (or the client (re)connected); drives the
+	// lost-packet retransmission (see RetransmitTimeout)
+	lastAckProgress   time.Time
+	retransmitTimeout time.Duration
+
 	// terminal state - once true, stream is complete
 	terminalEventAcked bool
 	closed             bool
@@ -68,13 +83,15 @@ func MakeStreamManager() *StreamManager {
 
 func MakeStreamManagerWithSizes(cwndSize, cirbufSize int) *StreamManager {
 	sm := &StreamManager{
-		buf:      MakeCirBuf(cirbufSize, true),
-		eofPos:   -1,
-		cwndSize: cwndSize,
-		rwndSize: cwndSize,
+		buf:               MakeCirBuf(cirbufSize, true),
+		eofPos:            -1,
+		cwndSize:          cwndSize,
+		rwndSize:          cwndSize,
+		retransmitTimeout: RetransmitTimeout,
 	}
 	sm.drainCond = sync.NewCond(&sm.lock)
 	go sm.senderLoop()
+	go sm.retransmitLoop()
 	return sm
 }
 
@@ -130,6 +147,7 @@ func (sm *StreamManager) ClientConnected(streamId string, dataSender DataSender,
 	sm.connected = true
 	sm.rwndSize = rwndSize
 	sm.sentNotAcked = 0
+	sm.lastAckProgress = time.Now()
 	effectiveWindow := sm.cwndSize
 	if sm.rwndSize < effectiveWindow {
 		effectiveWindow = sm.rwndSize
@@ -216,6 +234,7 @@ func (sm *StreamManager) RecvAck(ackPk wshrpc.CommandStreamAckData) {
 	// Update max acked tuple
 	sm.maxAckedSeq = seq
 	sm.maxAckedRwnd = rwnd
+	sm.lastAckProgress = time.Now()
 
 	headPos := sm.buf.HeadPos()
 	if seq < headPos {
@@ -341,6 +360,34 @@ func (sm *StreamManager) handleError(err error) {
 	sm.eofPos = sm.buf.TotalSize()
 	sm.terminalEvent = &streamTerminalEvent{err: err.Error()}
 	sm.drainCond.Signal()
+}
+
+// retransmitLoop watches for a stalled window: in-flight data (or an unacked
+// terminal event) with no ack progress for retransmitTimeout means a data
+// packet or its ack was lost on the fire-and-forget rpc link. Recovery is
+// go-back-N: rewind sentNotAcked to the buffer head (acked bytes are already
+// consumed, so everything still buffered is exactly the unacked window) and
+// let senderLoop resend it. The receiver drops duplicate seqs and re-acks, so
+// retransmission is idempotent from both ends.
+func (sm *StreamManager) retransmitLoop() {
+	ticker := time.NewTicker(retransmitPoll)
+	defer ticker.Stop()
+	for range ticker.C {
+		sm.lock.Lock()
+		if sm.closed || sm.terminalEventAcked {
+			sm.lock.Unlock()
+			return
+		}
+		inFlight := sm.sentNotAcked > 0 || (sm.terminalEventSent && !sm.terminalEventAcked)
+		if sm.connected && inFlight && time.Since(sm.lastAckProgress) > sm.retransmitTimeout {
+			log.Printf("streammanager: no ack progress for %v (unacked=%d), retransmitting window", sm.retransmitTimeout, sm.sentNotAcked)
+			sm.sentNotAcked = 0
+			sm.terminalEventSent = false
+			sm.lastAckProgress = time.Now()
+			sm.drainCond.Signal()
+		}
+		sm.lock.Unlock()
+	}
 }
 
 func (sm *StreamManager) senderLoop() {
