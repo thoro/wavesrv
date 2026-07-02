@@ -190,6 +190,21 @@ func (ws *WshServer) MoveTabCommand(ctx context.Context, data wshrpc.CommandMove
 	return nil
 }
 
+func (ws *WshServer) MoveBlockToTabCommand(ctx context.Context, data wshrpc.CommandMoveBlockToTabData) error {
+	ctx = waveobj.ContextWithUpdates(ctx)
+	rtn, err := wcore.MoveBlockToTab(ctx, data.BlockId, data.TargetTabId)
+	if err != nil {
+		return fmt.Errorf("error moving block: %w", err)
+	}
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	wps.Broker.SendUpdateEvents(updates)
+	if rtn.NewSourceActiveTabId != "" {
+		wcore.SendActiveTabUpdate(ctx, rtn.SourceWorkspaceId, rtn.NewSourceActiveTabId)
+	}
+	wcore.SendActiveTabUpdate(ctx, rtn.DestWorkspaceId, data.TargetTabId)
+	return nil
+}
+
 func (ws *WshServer) SetMetaCommand(ctx context.Context, data wshrpc.CommandSetMetaData) error {
 	log.Printf("SetMetaCommand: %s | %v\n", data.ORef, data.Meta)
 	oref := data.ORef

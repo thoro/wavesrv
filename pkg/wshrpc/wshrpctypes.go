@@ -97,6 +97,7 @@ type WshRpcInterface interface {
 	UpdateTabNameCommand(ctx context.Context, tabId string, newName string) error
 	UpdateWorkspaceTabIdsCommand(ctx context.Context, workspaceId string, tabIds []string) error
 	MoveTabCommand(ctx context.Context, data CommandMoveTabData) error
+	MoveBlockToTabCommand(ctx context.Context, data CommandMoveBlockToTabData) error
 	GetAllBadgesCommand(ctx context.Context) ([]baseds.BadgeEvent, error)
 
 	// connection functions
@@ -279,6 +280,11 @@ type CommandMoveTabData struct {
 	SourceWorkspaceId string `json:"sourceworkspaceid"`
 	DestWorkspaceId   string `json:"destworkspaceid"`
 	TabId             string `json:"tabid"`
+}
+
+type CommandMoveBlockToTabData struct {
+	BlockId     string `json:"blockid"`
+	TargetTabId string `json:"targettabid"`
 }
 
 type CommandResolveIdsData struct {

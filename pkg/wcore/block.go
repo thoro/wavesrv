@@ -194,6 +194,117 @@ func DeleteBlock(ctx context.Context, blockId string, recursive bool) error {
 	return nil
 }
 
+type MoveBlockToTabResult struct {
+	SourceTabId       string
+	SourceWorkspaceId string
+	DestWorkspaceId   string
+	// Non-empty when the emptied source tab was deleted and a sibling became active
+	// in its place (also carries the unchanged active tab id when a non-active tab
+	// was deleted — safe to re-announce either way).
+	NewSourceActiveTabId string
+}
+
+// MoveBlockToTab moves a top-level block from its current tab to targetTabId. The
+// block (and its running controller) is preserved — only tab membership, the block's
+// parent ref, and the two tabs' layout trees change. The source tab's layout node is
+// removed via "removenode" (NOT "delete", which would make the client delete the
+// block). An emptied source tab is deleted (Wave keeps no empty tabs); moving the
+// last block out of a workspace's only tab is refused, mirroring MoveTab's last-tab
+// guard. The target tab is made active in its workspace.
+func MoveBlockToTab(ctx context.Context, blockId string, targetTabId string) (*MoveBlockToTabResult, error) {
+	block, err := wstore.DBGet[*waveobj.Block](ctx, blockId)
+	if err != nil {
+		return nil, fmt.Errorf("error getting block: %w", err)
+	}
+	if block == nil {
+		return nil, fmt.Errorf("block not found: %q", blockId)
+	}
+	parentORef := waveobj.ParseORefNoErr(block.ParentORef)
+	if parentORef == nil || parentORef.OType != waveobj.OType_Tab {
+		return nil, fmt.Errorf("block %s is not a top-level tab block (parent %q)", blockId, block.ParentORef)
+	}
+	sourceTabId := parentORef.OID
+	if sourceTabId == targetTabId {
+		return nil, fmt.Errorf("source and target tabs are the same")
+	}
+	sourceWorkspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, sourceTabId)
+	if err != nil || sourceWorkspaceId == "" {
+		return nil, fmt.Errorf("error finding workspace for source tab %s: %w", sourceTabId, err)
+	}
+	destWorkspaceId, err := wstore.DBFindWorkspaceForTabId(ctx, targetTabId)
+	if err != nil || destWorkspaceId == "" {
+		return nil, fmt.Errorf("error finding workspace for target tab %s: %w", targetTabId, err)
+	}
+
+	sourceEmpty, err := wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (bool, error) {
+		sourceTab, _ := wstore.DBGet[*waveobj.Tab](tx.Context(), sourceTabId)
+		if sourceTab == nil {
+			return false, fmt.Errorf("source tab not found: %q", sourceTabId)
+		}
+		targetTab, _ := wstore.DBGet[*waveobj.Tab](tx.Context(), targetTabId)
+		if targetTab == nil {
+			return false, fmt.Errorf("target tab not found: %q", targetTabId)
+		}
+		txBlock, _ := wstore.DBGet[*waveobj.Block](tx.Context(), blockId)
+		if txBlock == nil {
+			return false, fmt.Errorf("block not found: %q", blockId)
+		}
+		sourceWs, _ := wstore.DBGet[*waveobj.Workspace](tx.Context(), sourceWorkspaceId)
+		if sourceWs == nil {
+			return false, fmt.Errorf("source workspace not found: %q", sourceWorkspaceId)
+		}
+		if len(sourceTab.BlockIds) <= 1 && len(sourceWs.TabIds) <= 1 {
+			return false, fmt.Errorf("cannot move the last pane out of a workspace")
+		}
+		sourceTab.BlockIds = utilfn.RemoveElemFromSlice(sourceTab.BlockIds, blockId)
+		targetTab.BlockIds = append(targetTab.BlockIds, blockId)
+		txBlock.ParentORef = waveobj.MakeORef(waveobj.OType_Tab, targetTabId).String()
+		wstore.DBUpdate(tx.Context(), sourceTab)
+		wstore.DBUpdate(tx.Context(), targetTab)
+		wstore.DBUpdate(tx.Context(), txBlock)
+		return len(sourceTab.BlockIds) == 0, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rtn := &MoveBlockToTabResult{
+		SourceTabId:       sourceTabId,
+		SourceWorkspaceId: sourceWorkspaceId,
+		DestWorkspaceId:   destWorkspaceId,
+	}
+	if sourceEmpty {
+		// DeleteTab also removes the tab's LayoutState, so no removenode is needed
+		// (BlockIds is already empty, so no blocks are deleted with it).
+		newActiveTabId, err := DeleteTab(ctx, sourceWorkspaceId, sourceTabId, false)
+		if err != nil {
+			return nil, fmt.Errorf("error deleting emptied source tab %s: %w", sourceTabId, err)
+		}
+		rtn.NewSourceActiveTabId = newActiveTabId
+	} else {
+		err = QueueLayoutActionForTab(ctx, sourceTabId, waveobj.LayoutActionData{
+			ActionType: LayoutActionDataType_RemoveNode,
+			BlockId:    blockId,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("error queuing removenode for source tab %s: %w", sourceTabId, err)
+		}
+	}
+	err = QueueLayoutActionForTab(ctx, targetTabId, waveobj.LayoutActionData{
+		ActionType: LayoutActionDataType_Insert,
+		BlockId:    blockId,
+		Focused:    true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error queuing insert for target tab %s: %w", targetTabId, err)
+	}
+	err = SetActiveTab(ctx, destWorkspaceId, targetTabId)
+	if err != nil {
+		return nil, fmt.Errorf("error activating target tab %s: %w", targetTabId, err)
+	}
+	return rtn, nil
+}
+
 // returns the updated block count for the parent object
 func deleteBlockObj(ctx context.Context, blockId string) (int, error) {
 	return wstore.WithTxRtn(ctx, func(tx *wstore.TxWrap) (int, error) {

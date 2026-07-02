@@ -642,6 +642,12 @@ export class RpcApiType {
         return client.wshRpcCall("message", data, opts);
     }
 
+    // command "moveblocktotab" [call]
+    MoveBlockToTabCommand(client: WshClient, data: CommandMoveBlockToTabData, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "moveblocktotab", data, opts);
+        return client.wshRpcCall("moveblocktotab", data, opts);
+    }
+
     // command "movetab" [call]
     MoveTabCommand(client: WshClient, data: CommandMoveTabData, opts?: RpcOpts): Promise<void> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "movetab", data, opts);

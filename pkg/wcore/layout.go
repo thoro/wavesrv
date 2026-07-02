@@ -15,9 +15,13 @@ import (
 )
 
 const (
-	LayoutActionDataType_Insert          = "insert"
-	LayoutActionDataType_InsertAtIndex   = "insertatindex"
-	LayoutActionDataType_Remove          = "delete"
+	LayoutActionDataType_Insert        = "insert"
+	LayoutActionDataType_InsertAtIndex = "insertatindex"
+	LayoutActionDataType_Remove        = "delete"
+	// RemoveNode removes a block's layout node WITHOUT deleting the block itself
+	// (unlike "delete", which triggers a client-side DeleteBlock). Used when a block
+	// moves to another tab.
+	LayoutActionDataType_RemoveNode      = "removenode"
 	LayoutActionDataType_ClearTree       = "clear"
 	LayoutActionDataType_Replace         = "replace"
 	LayoutActionDataType_SplitHorizontal = "splithorizontal"

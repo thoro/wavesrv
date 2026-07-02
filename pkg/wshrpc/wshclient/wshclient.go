@@ -640,6 +640,12 @@ func MessageCommand(w *wshutil.WshRpc, data wshrpc.CommandMessageData, opts *wsh
 	return err
 }
 
+// command "moveblocktotab", wshserver.MoveBlockToTabCommand
+func MoveBlockToTabCommand(w *wshutil.WshRpc, data wshrpc.CommandMoveBlockToTabData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "moveblocktotab", data, opts)
+	return err
+}
+
 // command "movetab", wshserver.MoveTabCommand
 func MoveTabCommand(w *wshutil.WshRpc, data wshrpc.CommandMoveTabData, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "movetab", data, opts)

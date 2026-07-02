@@ -44,3 +44,6 @@ docsite/
 .superpowers
 docs/superpowers
 .claude
+
+.npm-cache/
+wave-native/
