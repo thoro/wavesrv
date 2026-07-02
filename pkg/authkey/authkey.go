@@ -4,6 +4,7 @@
 package authkey
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"os"
@@ -36,4 +37,13 @@ func SetAuthKeyFromEnv() error {
 
 func GetAuthKey() string {
 	return authkey
+}
+
+// CompareAuthKey reports whether key matches the configured auth key
+// (constant-time; false when no key is configured).
+func CompareAuthKey(key string) bool {
+	if authkey == "" || key == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(key), []byte(authkey)) == 1
 }

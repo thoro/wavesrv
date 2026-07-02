@@ -546,14 +546,20 @@ func MakeTCPListener(serviceName string) (net.Listener, error) {
 }
 
 func MakeUnixListener() (net.Listener, error) {
-	serverAddr := wavebase.GetDomainSocketName()
+	return MakeUnixListenerAt(wavebase.GetDomainSocketName(), "unix-domain")
+}
+
+// MakeUnixListenerAt creates a unix domain socket listener at an explicit path
+// (0700, pre-existing socket file removed). Used for the web/ws servers when
+// running in no-TCP mode (WAVETERM_WEB_UNIX_SOCKET).
+func MakeUnixListenerAt(serverAddr string, serviceName string) (net.Listener, error) {
 	os.Remove(serverAddr) // ignore error
 	rtn, err := net.Listen("unix", serverAddr)
 	if err != nil {
 		return nil, fmt.Errorf("error creating listener at %v: %v", serverAddr, err)
 	}
 	os.Chmod(serverAddr, 0700)
-	log.Printf("Server [unix-domain] listening on %s\n", serverAddr)
+	log.Printf("Server [%s] listening on %s\n", serviceName, serverAddr)
 	return rtn, nil
 }
 

@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"path/filepath"
 
 	"runtime"
 	"sync"
@@ -596,17 +598,43 @@ func main() {
 		wavebase.GetSystemSummary()
 	}()
 
-	webListener, err := web.MakeTCPListener("web")
-	if err != nil {
-		log.Printf("error creating web listener: %v\n", err)
-		return
+	// No-TCP mode (wave-native): serve the web API and the ws message protocol
+	// on unix domain sockets so wavesrv occupies no local port and cannot be
+	// reached over the network. Electron keeps loopback TCP (Chromium cannot
+	// fetch over unix sockets).
+	useUnixWeb := os.Getenv(wavebase.WaveWebUnixSocketVarName) != ""
+	var webListener, wsListener net.Listener
+	var wsAddrStr, webAddrStr string
+	if useUnixWeb {
+		dataDir := wavebase.GetWaveDataDir()
+		webListener, err = web.MakeUnixListenerAt(filepath.Join(dataDir, "web.sock"), "web")
+		if err != nil {
+			log.Printf("error creating web unix listener: %v\n", err)
+			return
+		}
+		wsListener, err = web.MakeUnixListenerAt(filepath.Join(dataDir, "ws.sock"), "websocket")
+		if err != nil {
+			log.Printf("error creating websocket unix listener: %v\n", err)
+			return
+		}
+		wsAddrStr = "unix:" + wsListener.Addr().String()
+		webAddrStr = "unix:" + webListener.Addr().String()
+		go web.RunWSUnixServer(wsListener)
+	} else {
+		webListener, err = web.MakeTCPListener("web")
+		if err != nil {
+			log.Printf("error creating web listener: %v\n", err)
+			return
+		}
+		wsListener, err = web.MakeTCPListener("websocket")
+		if err != nil {
+			log.Printf("error creating websocket listener: %v\n", err)
+			return
+		}
+		wsAddrStr = wsListener.Addr().String()
+		webAddrStr = webListener.Addr().String()
+		go web.RunWebSocketServer(wsListener)
 	}
-	wsListener, err := web.MakeTCPListener("websocket")
-	if err != nil {
-		log.Printf("error creating websocket listener: %v\n", err)
-		return
-	}
-	go web.RunWebSocketServer(wsListener)
 	unixListener, err := web.MakeUnixListener()
 	if err != nil {
 		log.Printf("error creating unix listener: %v\n", err)
@@ -617,7 +645,7 @@ func main() {
 			BuildTime = "0"
 		}
 		// use fmt instead of log here to make sure it goes directly to stderr
-		fmt.Fprintf(os.Stderr, "WAVESRV-ESTART ws:%s web:%s version:%s buildtime:%s\n", wsListener.Addr(), webListener.Addr(), WaveVersion, BuildTime)
+		fmt.Fprintf(os.Stderr, "WAVESRV-ESTART ws:%s web:%s version:%s buildtime:%s\n", wsAddrStr, webAddrStr, WaveVersion, BuildTime)
 	}()
 	go wshutil.RunWshRpcOverListener(unixListener, nil)
 	web.RunWebServer(webListener) // blocking
