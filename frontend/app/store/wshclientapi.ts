@@ -942,10 +942,28 @@ export class RpcApiType {
         return client.wshRpcStream("streamtest", null, opts);
     }
 
+    // command "termclearbuffer" [call]
+    TermClearBufferCommand(client: WshClient, data: string, opts?: RpcOpts): Promise<void> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termclearbuffer", data, opts);
+        return client.wshRpcCall("termclearbuffer", data, opts);
+    }
+
     // command "termgetscrollbacklines" [call]
     TermGetScrollbackLinesCommand(client: WshClient, data: CommandTermGetScrollbackLinesData, opts?: RpcOpts): Promise<CommandTermGetScrollbackLinesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termgetscrollbacklines", data, opts);
         return client.wshRpcCall("termgetscrollbacklines", data, opts);
+    }
+
+    // command "termscrollbacklist" [call]
+    TermScrollbackListCommand(client: WshClient, opts?: RpcOpts): Promise<TermScrollbackEntry[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termscrollbacklist", null, opts);
+        return client.wshRpcCall("termscrollbacklist", null, opts);
+    }
+
+    // command "termsearchscrollback" [call]
+    TermSearchScrollbackCommand(client: WshClient, data: CommandTermSearchScrollbackData, opts?: RpcOpts): Promise<CommandTermSearchScrollbackRtnData> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termsearchscrollback", data, opts);
+        return client.wshRpcCall("termsearchscrollback", data, opts);
     }
 
     // command "test" [call]

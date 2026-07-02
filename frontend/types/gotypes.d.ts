@@ -720,6 +720,23 @@ declare global {
         lastupdated: number;
     };
 
+    // wshrpc.CommandTermSearchScrollbackData
+    type CommandTermSearchScrollbackData = {
+        blockid: string;
+        query: string;
+        casesensitive?: boolean;
+        maxresults?: number;
+    };
+
+    // wshrpc.CommandTermSearchScrollbackRtnData
+    type CommandTermSearchScrollbackRtnData = {
+        matches: TermSearchMatch[];
+        truncated?: boolean;
+        filesize: number;
+        datastartidx: number;
+        totallines: number;
+    };
+
     // wshrpc.CommandVarData
     type CommandVarData = {
         key: string;
@@ -1206,6 +1223,7 @@ declare global {
         "term:localshellpath"?: string;
         "term:localshellopts"?: string[];
         "term:scrollback"?: number;
+        "term:unlimitedscrollback"?: boolean;
         "term:vdomblockid"?: string;
         "term:vdomtoolbarblockid"?: string;
         "term:transparency"?: number;
@@ -1443,6 +1461,7 @@ declare global {
         "term:localshellopts"?: string[];
         "term:gitbashpath"?: string;
         "term:scrollback"?: number;
+        "term:unlimitedscrollback"?: boolean;
         "term:copyonselect"?: boolean;
         "term:transparency"?: number;
         "term:allowbracketedpaste"?: boolean;
@@ -1712,6 +1731,29 @@ declare global {
         name: string;
         layoutstate: string;
         blockids: string[];
+    };
+
+    // wshrpc.TermScrollbackEntry
+    type TermScrollbackEntry = {
+        workspaceid?: string;
+        workspacename?: string;
+        tabid?: string;
+        tabname?: string;
+        blockid: string;
+        view?: string;
+        controller?: string;
+        connection?: string;
+        size: number;
+        disksize: number;
+        unlimited?: boolean;
+        orphaned?: boolean;
+    };
+
+    // wshrpc.TermSearchMatch
+    type TermSearchMatch = {
+        offset: number;
+        line: number;
+        linetext: string;
     };
 
     // waveobj.TermSize

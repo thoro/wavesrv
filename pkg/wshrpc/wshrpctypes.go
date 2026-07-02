@@ -176,6 +176,9 @@ type WshRpcInterface interface {
 
 	// terminal
 	TermGetScrollbackLinesCommand(ctx context.Context, data CommandTermGetScrollbackLinesData) (*CommandTermGetScrollbackLinesRtnData, error)
+	TermSearchScrollbackCommand(ctx context.Context, data CommandTermSearchScrollbackData) (*CommandTermSearchScrollbackRtnData, error)
+	TermClearBufferCommand(ctx context.Context, blockId string) error
+	TermScrollbackListCommand(ctx context.Context) ([]TermScrollbackEntry, error)
 
 	// file
 	WshRpcFileInterface
@@ -678,6 +681,44 @@ type CommandTermGetScrollbackLinesRtnData struct {
 	LineStart   int      `json:"linestart"`
 	Lines       []string `json:"lines"`
 	LastUpdated int64    `json:"lastupdated"`
+}
+
+type CommandTermSearchScrollbackData struct {
+	BlockId       string `json:"blockid"`
+	Query         string `json:"query"`
+	CaseSensitive bool   `json:"casesensitive,omitempty"`
+	MaxResults    int    `json:"maxresults,omitempty"`
+}
+
+type TermSearchMatch struct {
+	// Offset is the raw term-file byte offset of the matched line's start
+	Offset int64 `json:"offset"`
+	// Line is the retained-relative logical line number of the match
+	Line     int64  `json:"line"`
+	LineText string `json:"linetext"`
+}
+
+type CommandTermSearchScrollbackRtnData struct {
+	Matches      []TermSearchMatch `json:"matches"`
+	Truncated    bool              `json:"truncated,omitempty"`
+	FileSize     int64             `json:"filesize"`
+	DataStartIdx int64             `json:"datastartidx"`
+	TotalLines   int64             `json:"totallines"`
+}
+
+type TermScrollbackEntry struct {
+	WorkspaceId   string `json:"workspaceid,omitempty"`
+	WorkspaceName string `json:"workspacename,omitempty"`
+	TabId         string `json:"tabid,omitempty"`
+	TabName       string `json:"tabname,omitempty"`
+	BlockId       string `json:"blockid"`
+	View          string `json:"view,omitempty"`
+	Controller    string `json:"controller,omitempty"`
+	Connection    string `json:"connection,omitempty"`
+	Size          int64  `json:"size"`
+	DiskSize      int64  `json:"disksize"`
+	Unlimited     bool   `json:"unlimited,omitempty"`
+	Orphaned      bool   `json:"orphaned,omitempty"`
 }
 
 type CommandTermUpdateAttachedJobData struct {

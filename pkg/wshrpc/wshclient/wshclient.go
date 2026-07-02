@@ -936,9 +936,27 @@ func StreamTestCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) chan wshrpc.Resp
 	return sendRpcRequestResponseStreamHelper[int](w, "streamtest", nil, opts)
 }
 
+// command "termclearbuffer", wshserver.TermClearBufferCommand
+func TermClearBufferCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "termclearbuffer", data, opts)
+	return err
+}
+
 // command "termgetscrollbacklines", wshserver.TermGetScrollbackLinesCommand
 func TermGetScrollbackLinesCommand(w *wshutil.WshRpc, data wshrpc.CommandTermGetScrollbackLinesData, opts *wshrpc.RpcOpts) (*wshrpc.CommandTermGetScrollbackLinesRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandTermGetScrollbackLinesRtnData](w, "termgetscrollbacklines", data, opts)
+	return resp, err
+}
+
+// command "termscrollbacklist", wshserver.TermScrollbackListCommand
+func TermScrollbackListCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) ([]wshrpc.TermScrollbackEntry, error) {
+	resp, err := sendRpcRequestCallHelper[[]wshrpc.TermScrollbackEntry](w, "termscrollbacklist", nil, opts)
+	return resp, err
+}
+
+// command "termsearchscrollback", wshserver.TermSearchScrollbackCommand
+func TermSearchScrollbackCommand(w *wshutil.WshRpc, data wshrpc.CommandTermSearchScrollbackData, opts *wshrpc.RpcOpts) (*wshrpc.CommandTermSearchScrollbackRtnData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandTermSearchScrollbackRtnData](w, "termsearchscrollback", data, opts)
 	return resp, err
 }
 

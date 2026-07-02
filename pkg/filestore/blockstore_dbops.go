@@ -4,12 +4,14 @@
 package filestore
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
 	"os"
 
 	"github.com/wavetermdev/waveterm/pkg/util/dbutil"
+	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
 
 // can return fs.ErrExist
@@ -115,7 +117,7 @@ func dbWriteCacheEntry(ctx context.Context, file *WaveFile, dataEntries map[int]
 			query = `DELETE FROM db_file_data WHERE zoneid = ? AND name = ?`
 			tx.Exec(query, file.ZoneId, file.Name)
 		}
-		dataPartQuery := `REPLACE INTO db_file_data (zoneid, name, partidx, data) VALUES (?, ?, ?, ?)`
+		dataPartQuery := `REPLACE INTO db_file_data (zoneid, name, partidx, data, linecount) VALUES (?, ?, ?, ?, ?)`
 		for partIdx, dataEntry := range dataEntries {
 			if partIdx != dataEntry.PartIdx {
 				panic(fmt.Sprintf("partIdx:%d and dataEntry.PartIdx:%d do not match", partIdx, dataEntry.PartIdx))
@@ -124,7 +126,9 @@ func dbWriteCacheEntry(ctx context.Context, file *WaveFile, dataEntries map[int]
 			if file.Opts.Compressed {
 				blob = compressPart(dataEntry.Data)
 			}
-			tx.Exec(dataPartQuery, file.ZoneId, file.Name, dataEntry.PartIdx, blob)
+			// the per-part newline count is the line index: cumulative sums over
+			// partidx give O(log n) line->byte addressing without decompression
+			tx.Exec(dataPartQuery, file.ZoneId, file.Name, dataEntry.PartIdx, blob, bytes.Count(dataEntry.Data, []byte{'\n'}))
 		}
 		// segmented retention: drop the chunk rows that have fallen out of the
 		// retention window so on-disk size stays bounded as the log grows.
@@ -135,6 +139,57 @@ func dbWriteCacheEntry(ctx context.Context, file *WaveFile, dataEntries map[int]
 				delQuery := `DELETE FROM db_file_data WHERE zoneid = ? AND name = ? AND partidx < ?`
 				tx.Exec(delQuery, file.ZoneId, file.Name, int(firstSeg))
 			}
+		}
+		return nil
+	})
+}
+
+func dbUpdateFileOpts(ctx context.Context, zoneId string, name string, opts wshrpc.FileOpts) error {
+	return WithTx(ctx, func(tx *TxWrap) error {
+		query := `UPDATE db_wave_file SET opts = ? WHERE zoneid = ? AND name = ?`
+		tx.Exec(query, dbutil.QuickJson(opts), zoneId, name)
+		return nil
+	})
+}
+
+func dbGetFileDiskUsage(ctx context.Context, zoneId string, name string) (int64, error) {
+	return WithTxRtn(ctx, func(tx *TxWrap) (int64, error) {
+		query := `SELECT COALESCE(SUM(LENGTH(data)), 0) FROM db_file_data WHERE zoneid = ? AND name = ?`
+		return int64(tx.GetInt(query, zoneId, name)), nil
+	})
+}
+
+type partLineCount struct {
+	PartIdx   int
+	LineCount int
+}
+
+func dbGetPartLineCounts(ctx context.Context, zoneId string, name string) ([]partLineCount, error) {
+	return WithTxRtn(ctx, func(tx *TxWrap) ([]partLineCount, error) {
+		var counts []partLineCount
+		query := `SELECT partidx, linecount FROM db_file_data WHERE zoneid = ? AND name = ? ORDER BY partidx`
+		tx.Select(&counts, query, zoneId, name)
+		return counts, nil
+	})
+}
+
+// backfills linecount for legacy part rows (written before the line index existed)
+func dbBackfillLineCounts(ctx context.Context, zoneId string, name string, compressed bool) error {
+	return WithTx(ctx, func(tx *TxWrap) error {
+		var rows []*DataCacheEntry
+		query := `SELECT partidx, data FROM db_file_data WHERE zoneid = ? AND name = ? AND linecount < 0`
+		tx.Select(&rows, query, zoneId, name)
+		updateQuery := `UPDATE db_file_data SET linecount = ? WHERE zoneid = ? AND name = ? AND partidx = ?`
+		for _, row := range rows {
+			data := row.Data
+			if compressed {
+				plain, err := decompressPart(data)
+				if err != nil {
+					return fmt.Errorf("error decompressing part %d for %s:%s: %w", row.PartIdx, zoneId, name, err)
+				}
+				data = plain
+			}
+			tx.Exec(updateQuery, bytes.Count(data, []byte{'\n'}), zoneId, name, row.PartIdx)
 		}
 		return nil
 	})

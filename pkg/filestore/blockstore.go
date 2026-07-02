@@ -207,6 +207,36 @@ func (s *FileStore) Stat(ctx context.Context, zoneId string, name string) (*Wave
 	})
 }
 
+// UpdateFileMaxSize updates Opts.MaxSize for an existing file (DB row + cached
+// entry). maxSize of 0 means unbounded for segmented files. retention is
+// enforced at flush time from the cached Opts, so no data migration is needed
+// in either direction -- trimming simply resumes (or stops) at the next flush.
+func (s *FileStore) UpdateFileMaxSize(ctx context.Context, zoneId string, name string, maxSize int64) error {
+	if maxSize < 0 {
+		return fmt.Errorf("max size must be non-negative")
+	}
+	return withLock(s, zoneId, name, func(entry *CacheEntry) error {
+		err := entry.loadFileIntoCache(ctx)
+		if err != nil {
+			return err
+		}
+		if (entry.File.Opts.Circular || entry.File.Opts.Segmented) && maxSize > 0 && maxSize%partDataSize != 0 {
+			maxSize = (maxSize/partDataSize + 1) * partDataSize
+		}
+		if entry.File.Opts.MaxSize == maxSize {
+			return nil
+		}
+		entry.File.Opts.MaxSize = maxSize
+		return dbUpdateFileOpts(ctx, zoneId, name, entry.File.Opts)
+	})
+}
+
+// GetFileDiskUsage returns the on-disk (compressed) byte total of flushed part
+// rows for a file. approximate: unflushed cache data is not included.
+func (s *FileStore) GetFileDiskUsage(ctx context.Context, zoneId string, name string) (int64, error) {
+	return dbGetFileDiskUsage(ctx, zoneId, name)
+}
+
 func (s *FileStore) ListFiles(ctx context.Context, zoneId string) ([]*WaveFile, error) {
 	files, err := dbGetZoneFiles(ctx, zoneId)
 	if err != nil {

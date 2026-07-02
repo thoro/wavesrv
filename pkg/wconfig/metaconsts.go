@@ -49,6 +49,7 @@ const (
 	ConfigKey_TermLocalShellOpts             = "term:localshellopts"
 	ConfigKey_TermGitBashPath                = "term:gitbashpath"
 	ConfigKey_TermScrollback                 = "term:scrollback"
+	ConfigKey_TermUnlimitedScrollback        = "term:unlimitedscrollback"
 	ConfigKey_TermCopyOnSelect               = "term:copyonselect"
 	ConfigKey_TermTransparency               = "term:transparency"
 	ConfigKey_TermAllowBracketedPaste        = "term:allowbracketedpaste"

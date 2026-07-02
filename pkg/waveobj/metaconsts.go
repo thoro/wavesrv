@@ -116,6 +116,7 @@ const (
 	MetaKey_TermLocalShellPath               = "term:localshellpath"
 	MetaKey_TermLocalShellOpts               = "term:localshellopts"
 	MetaKey_TermScrollback                   = "term:scrollback"
+	MetaKey_TermUnlimitedScrollback          = "term:unlimitedscrollback"
 	MetaKey_TermVDomSubBlockId               = "term:vdomblockid"
 	MetaKey_TermVDomToolbarBlockId           = "term:vdomtoolbarblockid"
 	MetaKey_TermTransparency                 = "term:transparency"

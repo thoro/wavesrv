@@ -102,6 +102,7 @@ type SettingsType struct {
 	TermLocalShellOpts         []string `json:"term:localshellopts,omitempty"`
 	TermGitBashPath            string   `json:"term:gitbashpath,omitempty"`
 	TermScrollback             *int64   `json:"term:scrollback,omitempty"`
+	TermUnlimitedScrollback    *bool    `json:"term:unlimitedscrollback,omitempty"`
 	TermCopyOnSelect           *bool    `json:"term:copyonselect,omitempty"`
 	TermTransparency           *float64 `json:"term:transparency,omitempty"`
 	TermAllowBracketedPaste    *bool    `json:"term:allowbracketedpaste,omitempty"`

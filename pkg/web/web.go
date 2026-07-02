@@ -50,6 +50,7 @@ const (
 	LastModifiedHeaderKey  = "Last-Modified"
 
 	WaveZoneFileInfoHeaderKey = "X-ZoneFileInfo"
+	WaveLineInfoHeaderKey     = "X-WaveLineInfo"
 )
 
 const HttpReadTimeout = 5 * time.Second
@@ -147,16 +148,37 @@ func marshalReturnValue(data any, err error) []byte {
 	return rtn
 }
 
+func queryInt64(r *http.Request, key string) (int64, error) {
+	str := r.URL.Query().Get(key)
+	if str == "" {
+		return 0, nil
+	}
+	val, err := strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", key, err)
+	}
+	return val, nil
+}
+
+// serves a byte range of a wave file. the range can be selected four ways:
+//   - offset: stream from max(offset, DataStartIdx) to EOF
+//   - offset + count: stream at most count bytes from there
+//   - tail: stream the last tail retained bytes
+//   - startline + numlines: stream the byte range covering those logical lines
+//     (resolved via the filestore line index; X-WaveLineInfo returns
+//     "startByte:endByte:startLine")
 func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 	zoneId := r.URL.Query().Get("zoneid")
 	name := r.URL.Query().Get("name")
-	offsetStr := r.URL.Query().Get("offset")
-	var offset int64 = 0
-	if offsetStr != "" {
-		var err error
-		offset, err = strconv.ParseInt(offsetStr, 10, 64)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("invalid offset: %v", err), http.StatusBadRequest)
+	var offset, count, tail, startLine, numLines int64
+	var parseErr error
+	for _, p := range []struct {
+		key string
+		val *int64
+	}{{"offset", &offset}, {"count", &count}, {"tail", &tail}, {"startline", &startLine}, {"numlines", &numLines}} {
+		if *p.val, parseErr = queryInt64(r, p.key); parseErr != nil {
+			http.Error(w, parseErr.Error(), http.StatusBadRequest)
+			return
 		}
 	}
 	if _, err := uuid.Parse(zoneId); err != nil {
@@ -183,19 +205,37 @@ func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 	}
 	// can make more efficient by checking modtime + If-Modified-Since headers to allow caching
 	dataStartIdx := file.DataStartIdx()
-	if offset >= dataStartIdx {
+	if numLines > 0 {
+		lineStart, lineEnd, err := filestore.WFS.LineRangeToByteRange(r.Context(), zoneId, name, startLine, numLines)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("error resolving line range: %v", err), http.StatusInternalServerError)
+			return
+		}
+		dataStartIdx = lineStart
+		count = lineEnd - lineStart
+		w.Header().Set(WaveLineInfoHeaderKey, fmt.Sprintf("%d:%d:%d", lineStart, lineEnd, startLine))
+	} else if tail > 0 {
+		if start := file.Size - tail; start > dataStartIdx {
+			dataStartIdx = start
+		}
+	} else if offset >= dataStartIdx {
 		dataStartIdx = offset
 	}
+	endIdx := file.Size
+	if count > 0 && dataStartIdx+count < endIdx {
+		endIdx = dataStartIdx + count
+	}
 	w.Header().Set(ContentTypeHeaderKey, ContentTypeBinary)
-	w.Header().Set(ContentLengthHeaderKey, fmt.Sprintf("%d", file.Size-dataStartIdx))
+	w.Header().Set(ContentLengthHeaderKey, fmt.Sprintf("%d", maxInt64(endIdx-dataStartIdx, 0)))
 	w.Header().Set(WaveZoneFileInfoHeaderKey, base64.StdEncoding.EncodeToString(jsonFileBArr))
 	w.Header().Set(LastModifiedHeaderKey, time.UnixMilli(file.ModTs).UTC().Format(http.TimeFormat))
-	if dataStartIdx >= file.Size {
+	if dataStartIdx >= endIdx {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	for offset := dataStartIdx; offset < file.Size; offset += filestore.DefaultPartDataSize {
-		_, data, err := filestore.WFS.ReadAt(r.Context(), zoneId, name, offset, filestore.DefaultPartDataSize)
+	for offset := dataStartIdx; offset < endIdx; offset += filestore.DefaultPartDataSize {
+		readSize := minInt64(filestore.DefaultPartDataSize, endIdx-offset)
+		_, data, err := filestore.WFS.ReadAt(r.Context(), zoneId, name, offset, readSize)
 		if err != nil {
 			if offset == 0 {
 				http.Error(w, fmt.Sprintf("error reading file: %v", err), http.StatusInternalServerError)
@@ -207,6 +247,20 @@ func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write(data)
 	}
+}
+
+func minInt64(a int64, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt64(a int64, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func serveTransparentGIF(w http.ResponseWriter) {

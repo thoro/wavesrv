@@ -7,13 +7,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io/fs"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/jobcontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
@@ -167,12 +165,15 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 		}
 	}
 
+	// create the term file (or re-apply the resolved retention window to an
+	// existing one) on reattach as well as fresh starts, so a changed
+	// term:unlimitedscrollback setting takes effect on the next resync
+	if _, fsErr := makeOrUpdateTermFile(ctx, dsc.BlockId, blockMeta); fsErr != nil {
+		return fmt.Errorf("error creating block term file: %w", fsErr)
+	}
+
 	if jobId == "" {
 		log.Printf("block %q starting new durable shell\n", dsc.BlockId)
-		fsErr := filestore.WFS.MakeFile(ctx, dsc.BlockId, wavebase.BlockFile_Term, nil, wshrpc.FileOpts{MaxSize: DefaultTermMaxFileSize, Segmented: true, Compressed: true})
-		if fsErr != nil && fsErr != fs.ErrExist {
-			return fmt.Errorf("error creating block term file: %w", fsErr)
-		}
 		newJobId, err := dsc.startNewJob(ctx, blockMeta, dsc.ConnName, rtOpts)
 		if err != nil {
 			return fmt.Errorf("failed to start new job: %w", err)

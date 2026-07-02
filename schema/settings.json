@@ -134,6 +134,9 @@
         "term:scrollback": {
           "type": "integer"
         },
+        "term:unlimitedscrollback": {
+          "type": "boolean"
+        },
         "term:copyonselect": {
           "type": "boolean"
         },

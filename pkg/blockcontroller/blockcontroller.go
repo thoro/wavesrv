@@ -23,7 +23,9 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
+	"github.com/wavetermdev/waveterm/pkg/wconfig"
 	"github.com/wavetermdev/waveterm/pkg/wps"
+	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc/wshclient"
 	"github.com/wavetermdev/waveterm/pkg/wslconn"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
@@ -389,6 +391,39 @@ func HandleAppendBlockFile(blockId string, blockFile string, data []byte) error 
 		},
 	})
 	return nil
+}
+
+// resolveTermMaxFileSize returns the term blockfile retention window for a
+// block: 0 (unbounded) when term:unlimitedscrollback is set, with the block
+// meta overriding the global setting.
+func resolveTermMaxFileSize(blockMeta waveobj.MetaMapType) int64 {
+	settings := wconfig.GetWatcher().GetFullConfig().Settings
+	unlimited := settings.TermUnlimitedScrollback != nil && *settings.TermUnlimitedScrollback
+	if _, ok := blockMeta[waveobj.MetaKey_TermUnlimitedScrollback]; ok {
+		unlimited = blockMeta.GetBool(waveobj.MetaKey_TermUnlimitedScrollback, false)
+	}
+	if unlimited {
+		return 0
+	}
+	return DefaultTermMaxFileSize
+}
+
+// makeOrUpdateTermFile creates the block's segmented, compressed term file, or
+// applies the currently-resolved retention window to an existing one (the
+// setting can change between controller starts).
+func makeOrUpdateTermFile(ctx context.Context, blockId string, blockMeta waveobj.MetaMapType) (existed bool, err error) {
+	termMaxSize := resolveTermMaxFileSize(blockMeta)
+	fsErr := filestore.WFS.MakeFile(ctx, blockId, wavebase.BlockFile_Term, nil, wshrpc.FileOpts{MaxSize: termMaxSize, Segmented: true, Compressed: true})
+	if fsErr != nil && fsErr != fs.ErrExist {
+		return false, fmt.Errorf("error creating blockfile: %w", fsErr)
+	}
+	if fsErr != fs.ErrExist {
+		return false, nil
+	}
+	if err := filestore.WFS.UpdateFileMaxSize(ctx, blockId, wavebase.BlockFile_Term, termMaxSize); err != nil {
+		log.Printf("error updating term blockfile maxsize for %s: %v\n", blockId, err)
+	}
+	return true, nil
 }
 
 func HandleTruncateBlockFile(blockId string) error {

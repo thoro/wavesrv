@@ -378,11 +378,11 @@ func (bc *ShellController) setupAndStartShellProcess(logCtx context.Context, rc 
 	// create a segmented, compressed blockfile for the output (endless scrollback)
 	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelFn()
-	fsErr := filestore.WFS.MakeFile(ctx, bc.BlockId, wavebase.BlockFile_Term, nil, wshrpc.FileOpts{MaxSize: DefaultTermMaxFileSize, Segmented: true, Compressed: true})
-	if fsErr != nil && fsErr != fs.ErrExist {
-		return nil, fmt.Errorf("error creating blockfile: %w", fsErr)
+	existed, fsErr := makeOrUpdateTermFile(ctx, bc.BlockId, blockMeta)
+	if fsErr != nil {
+		return nil, fsErr
 	}
-	if fsErr == fs.ErrExist {
+	if existed {
 		// reset the terminal state
 		bc.resetTerminalState(logCtx)
 	}
