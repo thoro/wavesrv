@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -617,8 +618,10 @@ func main() {
 			log.Printf("error creating websocket unix listener: %v\n", err)
 			return
 		}
-		wsAddrStr = "unix:" + wsListener.Addr().String()
-		webAddrStr = "unix:" + webListener.Addr().String()
+		// The ESTART line is space-delimited, so socket paths (which may
+		// contain spaces -- "Application Support") ride percent-encoded.
+		wsAddrStr = "unix:" + (&url.URL{Path: wsListener.Addr().String()}).EscapedPath()
+		webAddrStr = "unix:" + (&url.URL{Path: webListener.Addr().String()}).EscapedPath()
 		go web.RunWSUnixServer(wsListener)
 	} else {
 		webListener, err = web.MakeTCPListener("web")
