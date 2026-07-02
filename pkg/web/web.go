@@ -5,6 +5,7 @@ package web
 
 import (
 	"encoding/base64"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -213,10 +214,17 @@ func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 		}
 		dataStartIdx = lineStart
 		count = lineEnd - lineStart
-		w.Header().Set(WaveLineInfoHeaderKey, fmt.Sprintf("%d:%d:%d", lineStart, lineEnd, startLine))
+		setLineInfoHeader(r, w, zoneId, name, lineStart, lineEnd, startLine)
 	} else if tail > 0 {
 		if start := file.Size - tail; start > dataStartIdx {
-			dataStartIdx = start
+			// align the tail to the next line start so the client's history/live
+			// seam begins at a whole logical line (no partial-row duplication)
+			dataStartIdx = alignToNextLine(r.Context(), zoneId, name, start, file.Size)
+		}
+		// line info lets the terminal history layer size its line-space scroll
+		// without a second round trip (best-effort: circular files have no index)
+		if bodyStartLine, err := filestore.WFS.OffsetToLine(r.Context(), zoneId, name, dataStartIdx); err == nil {
+			setLineInfoHeader(r, w, zoneId, name, dataStartIdx, file.Size, bodyStartLine)
 		}
 	} else if offset >= dataStartIdx {
 		dataStartIdx = offset
@@ -247,6 +255,37 @@ func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write(data)
 	}
+}
+
+// returns the byte offset just past the first newline at/after start (searching
+// at most one part), or start unchanged when none is found (pathological
+// no-newline data -- the client accepts a mid-line seam then).
+func alignToNextLine(ctx context.Context, zoneId string, name string, start int64, size int64) int64 {
+	readSize := minInt64(filestore.DefaultPartDataSize, size-start)
+	if readSize <= 0 {
+		return start
+	}
+	_, data, err := filestore.WFS.ReadAt(ctx, zoneId, name, start, readSize)
+	if err != nil {
+		return start
+	}
+	for i, b := range data {
+		if b == '\n' {
+			return start + int64(i) + 1
+		}
+	}
+	return start
+}
+
+// X-WaveLineInfo: "startByte:endByte:startLine:totalLines" -- the resolved
+// byte range of a line-addressed (or tail) read plus the file's total flushed
+// line count, in retained-relative raw-\n line space.
+func setLineInfoHeader(r *http.Request, w http.ResponseWriter, zoneId string, name string, startByte int64, endByte int64, startLine int64) {
+	totalLines, err := filestore.WFS.GetTotalLineCount(r.Context(), zoneId, name)
+	if err != nil {
+		return
+	}
+	w.Header().Set(WaveLineInfoHeaderKey, fmt.Sprintf("%d:%d:%d:%d", startByte, endByte, startLine, totalLines))
 }
 
 func minInt64(a int64, b int64) int64 {
