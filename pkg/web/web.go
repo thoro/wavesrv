@@ -4,8 +4,8 @@
 package web
 
 import (
-	"encoding/base64"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,6 +28,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/schema"
 	"github.com/wavetermdev/waveterm/pkg/service"
+	"github.com/wavetermdev/waveterm/pkg/util/ansistrip"
 	"github.com/wavetermdev/waveterm/pkg/util/fileutil"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
@@ -168,15 +169,18 @@ func queryInt64(r *http.Request, key string) (int64, error) {
 //   - startline + numlines: stream the byte range covering those logical lines
 //     (resolved via the filestore line index; X-WaveLineInfo returns
 //     "startByte:endByte:startLine")
+//
+// stripansi=1 streams the range as ANSI-stripped plain text (one line per
+// logical line) instead of raw VT bytes -- the terminal's full-buffer copy.
 func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 	zoneId := r.URL.Query().Get("zoneid")
 	name := r.URL.Query().Get("name")
-	var offset, count, tail, startLine, numLines int64
+	var offset, count, tail, startLine, numLines, stripAnsi int64
 	var parseErr error
 	for _, p := range []struct {
 		key string
 		val *int64
-	}{{"offset", &offset}, {"count", &count}, {"tail", &tail}, {"startline", &startLine}, {"numlines", &numLines}} {
+	}{{"offset", &offset}, {"count", &count}, {"tail", &tail}, {"startline", &startLine}, {"numlines", &numLines}, {"stripansi", &stripAnsi}} {
 		if *p.val, parseErr = queryInt64(r, p.key); parseErr != nil {
 			http.Error(w, parseErr.Error(), http.StatusBadRequest)
 			return
@@ -234,12 +238,19 @@ func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 		endIdx = dataStartIdx + count
 	}
 	w.Header().Set(ContentTypeHeaderKey, ContentTypeBinary)
-	w.Header().Set(ContentLengthHeaderKey, fmt.Sprintf("%d", maxInt64(endIdx-dataStartIdx, 0)))
+	if stripAnsi == 0 {
+		// stripped output length is unknown up front (chunked transfer)
+		w.Header().Set(ContentLengthHeaderKey, fmt.Sprintf("%d", maxInt64(endIdx-dataStartIdx, 0)))
+	}
 	w.Header().Set(WaveZoneFileInfoHeaderKey, base64.StdEncoding.EncodeToString(jsonFileBArr))
 	w.Header().Set(LastModifiedHeaderKey, time.UnixMilli(file.ModTs).UTC().Format(http.TimeFormat))
 	if dataStartIdx >= endIdx {
 		w.WriteHeader(http.StatusOK)
 		return
+	}
+	var scanner *ansistrip.LineScanner
+	if stripAnsi != 0 {
+		scanner = ansistrip.NewLineScanner(dataStartIdx)
 	}
 	for offset := dataStartIdx; offset < endIdx; offset += filestore.DefaultPartDataSize {
 		readSize := minInt64(filestore.DefaultPartDataSize, endIdx-offset)
@@ -253,7 +264,20 @@ func handleWaveFile(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		w.Write(data)
+		if scanner == nil {
+			w.Write(data)
+			continue
+		}
+		for _, line := range scanner.Feed(data) {
+			w.Write([]byte(line.Text))
+			w.Write([]byte{'\n'})
+		}
+	}
+	if scanner != nil {
+		if last := scanner.Flush(); last != nil {
+			w.Write([]byte(last.Text))
+			w.Write([]byte{'\n'})
+		}
 	}
 }
 
