@@ -114,6 +114,12 @@ func SendWaveObjUpdate(oref waveobj.ORef) {
 		log.Printf("error getting object for update event: %v", err)
 		return
 	}
+	// DBGetORef returns (nil, nil) when the object doesn't exist -- which happens
+	// legitimately when it was deleted concurrently (e.g. CloseTab deletes a block
+	// while the controller's job detach is still publishing). Skip the event.
+	if waveObj == nil {
+		return
+	}
 	wps.Broker.Publish(wps.WaveEvent{
 		Event:  wps.Event_WaveObjUpdate,
 		Scopes: []string{oref.String()},
