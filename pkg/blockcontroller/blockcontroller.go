@@ -307,6 +307,45 @@ func DestroyBlockController(blockId string) {
 	deleteController(blockId)
 }
 
+// GetLocalShellPid returns the OS pid of a block's LOCAL shell process, or 0
+// when the block has no locally running shell (remote connection, shell not
+// running, or a non-shell controller). Used to inspect the shell's child
+// processes before a destructive close.
+func GetLocalShellPid(ctx context.Context, blockId string) int {
+	controller := getController(blockId)
+	if controller == nil {
+		return 0
+	}
+	switch c := controller.(type) {
+	case *ShellController:
+		if !conncontroller.IsLocalConnName(c.ConnName) {
+			return 0
+		}
+		var pid int
+		c.WithLock(func() {
+			if c.ProcStatus == Status_Running && c.ShellProc != nil {
+				pid = c.ShellProc.LocalPid()
+			}
+		})
+		return pid
+	case *DurableShellController:
+		jobId := c.getJobId()
+		if jobId == "" {
+			return 0
+		}
+		job, err := wstore.DBGet[*waveobj.Job](ctx, jobId)
+		if err != nil || job == nil {
+			return 0
+		}
+		if !conncontroller.IsLocalConnName(job.Connection) || job.CmdExitTs != 0 ||
+			job.JobManagerStatus != jobcontroller.JobManagerStatus_Running {
+			return 0
+		}
+		return job.CmdPid
+	}
+	return 0
+}
+
 func sendConnMonitorInputNotification(controller Controller) {
 	connName := controller.GetConnName()
 	if connName == "" || conncontroller.IsLocalConnName(connName) || conncontroller.IsWslConnName(connName) {

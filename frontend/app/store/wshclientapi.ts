@@ -948,6 +948,12 @@ export class RpcApiType {
         return client.wshRpcCall("termclearbuffer", data, opts);
     }
 
+    // command "termgetrunningcommands" [call]
+    TermGetRunningCommandsCommand(client: WshClient, data: CommandTermGetRunningCommandsData, opts?: RpcOpts): Promise<TermRunningCommand[]> {
+        if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termgetrunningcommands", data, opts);
+        return client.wshRpcCall("termgetrunningcommands", data, opts);
+    }
+
     // command "termgetscrollbacklines" [call]
     TermGetScrollbackLinesCommand(client: WshClient, data: CommandTermGetScrollbackLinesData, opts?: RpcOpts): Promise<CommandTermGetScrollbackLinesRtnData> {
         if (this.mockClient) return this.mockClient.mockWshRpcCall(client, "termgetscrollbacklines", data, opts);

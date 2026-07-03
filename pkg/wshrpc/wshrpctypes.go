@@ -179,6 +179,7 @@ type WshRpcInterface interface {
 	TermSearchScrollbackCommand(ctx context.Context, data CommandTermSearchScrollbackData) (*CommandTermSearchScrollbackRtnData, error)
 	TermClearBufferCommand(ctx context.Context, blockId string) error
 	TermScrollbackListCommand(ctx context.Context) ([]TermScrollbackEntry, error)
+	TermGetRunningCommandsCommand(ctx context.Context, data CommandTermGetRunningCommandsData) ([]TermRunningCommand, error)
 
 	// file
 	WshRpcFileInterface
@@ -724,6 +725,18 @@ type TermScrollbackEntry struct {
 type CommandTermUpdateAttachedJobData struct {
 	BlockId string `json:"blockid"`
 	JobId   string `json:"jobid,omitempty"`
+}
+
+type CommandTermGetRunningCommandsData struct {
+	WorkspaceId string `json:"workspaceid,omitempty"`
+	TabId       string `json:"tabid,omitempty"`
+	BlockId     string `json:"blockid,omitempty"`
+}
+
+type TermRunningCommand struct {
+	BlockId string `json:"blockid"`
+	Pid     int    `json:"pid"`
+	Command string `json:"command"`
 }
 
 type CommandElectronEncryptData struct {

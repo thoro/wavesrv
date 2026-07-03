@@ -705,6 +705,13 @@ declare global {
         error?: string;
     };
 
+    // wshrpc.CommandTermGetRunningCommandsData
+    type CommandTermGetRunningCommandsData = {
+        workspaceid?: string;
+        tabid?: string;
+        blockid?: string;
+    };
+
     // wshrpc.CommandTermGetScrollbackLinesData
     type CommandTermGetScrollbackLinesData = {
         linestart: number;
@@ -1731,6 +1738,13 @@ declare global {
         name: string;
         layoutstate: string;
         blockids: string[];
+    };
+
+    // wshrpc.TermRunningCommand
+    type TermRunningCommand = {
+        blockid: string;
+        pid: number;
+        command: string;
     };
 
     // wshrpc.TermScrollbackEntry

@@ -81,6 +81,16 @@ func (sp *ShellProc) Close() {
 	}()
 }
 
+// LocalPid returns the OS pid of a locally exec'd shell process, or 0 when the
+// proc is remote (ssh/wsl session wrap) or not started.
+func (sp *ShellProc) LocalPid() int {
+	cw, ok := sp.Cmd.(CmdWrap)
+	if !ok || cw.Cmd == nil || cw.Cmd.Process == nil {
+		return 0
+	}
+	return cw.Cmd.Process.Pid
+}
+
 func (sp *ShellProc) SetWaitErrorAndSignalDone(waitErr error) {
 	sp.CloseOnce.Do(func() {
 		sp.WaitErr = waitErr

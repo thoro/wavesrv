@@ -942,6 +942,12 @@ func TermClearBufferCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts
 	return err
 }
 
+// command "termgetrunningcommands", wshserver.TermGetRunningCommandsCommand
+func TermGetRunningCommandsCommand(w *wshutil.WshRpc, data wshrpc.CommandTermGetRunningCommandsData, opts *wshrpc.RpcOpts) ([]wshrpc.TermRunningCommand, error) {
+	resp, err := sendRpcRequestCallHelper[[]wshrpc.TermRunningCommand](w, "termgetrunningcommands", data, opts)
+	return resp, err
+}
+
 // command "termgetscrollbacklines", wshserver.TermGetScrollbackLinesCommand
 func TermGetScrollbackLinesCommand(w *wshutil.WshRpc, data wshrpc.CommandTermGetScrollbackLinesData, opts *wshrpc.RpcOpts) (*wshrpc.CommandTermGetScrollbackLinesRtnData, error) {
 	resp, err := sendRpcRequestCallHelper[*wshrpc.CommandTermGetScrollbackLinesRtnData](w, "termgetscrollbacklines", data, opts)

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/shirou/gopsutil/v4/process"
 	"github.com/wavetermdev/waveterm/pkg/blockcontroller"
 	"github.com/wavetermdev/waveterm/pkg/filestore"
 	"github.com/wavetermdev/waveterm/pkg/util/ansistrip"
@@ -174,4 +175,60 @@ func makeTermScrollbackEntry(ctx context.Context, blockId string) (*wshrpc.TermS
 		DiskSize:  diskSize,
 		Unlimited: wf.Opts.MaxSize == 0,
 	}, nil
+}
+
+// TermGetRunningCommandsCommand reports the child processes still running
+// under the LOCAL shells of the given scope (one block, a tab's blocks, or
+// every tab of a workspace) -- the "is an application still running here?"
+// check behind close confirmations. Remote shells are skipped (their process
+// tree is not inspectable from here), as are transient wsh helpers.
+func (ws *WshServer) TermGetRunningCommandsCommand(ctx context.Context, data wshrpc.CommandTermGetRunningCommandsData) ([]wshrpc.TermRunningCommand, error) {
+	var blockIds []string
+	switch {
+	case data.WorkspaceId != "":
+		workspace, err := wstore.DBMustGet[*waveobj.Workspace](ctx, data.WorkspaceId)
+		if err != nil {
+			return nil, fmt.Errorf("error getting workspace: %w", err)
+		}
+		for _, tabId := range workspace.TabIds {
+			tab, err := wstore.DBGet[*waveobj.Tab](ctx, tabId)
+			if err != nil || tab == nil {
+				continue
+			}
+			blockIds = append(blockIds, tab.BlockIds...)
+		}
+	case data.TabId != "":
+		tab, err := wstore.DBMustGet[*waveobj.Tab](ctx, data.TabId)
+		if err != nil {
+			return nil, fmt.Errorf("error getting tab: %w", err)
+		}
+		blockIds = tab.BlockIds
+	case data.BlockId != "":
+		blockIds = []string{data.BlockId}
+	default:
+		return nil, fmt.Errorf("workspaceid, tabid, or blockid is required")
+	}
+	var rtn []wshrpc.TermRunningCommand
+	for _, blockId := range blockIds {
+		pid := blockcontroller.GetLocalShellPid(ctx, blockId)
+		if pid <= 0 {
+			continue
+		}
+		proc, err := process.NewProcess(int32(pid))
+		if err != nil {
+			continue
+		}
+		children, err := proc.Children()
+		if err != nil {
+			continue
+		}
+		for _, child := range children {
+			name, err := child.Name()
+			if err != nil || name == "" || name == "wsh" {
+				continue
+			}
+			rtn = append(rtn, wshrpc.TermRunningCommand{BlockId: blockId, Pid: int(child.Pid), Command: name})
+		}
+	}
+	return rtn, nil
 }
