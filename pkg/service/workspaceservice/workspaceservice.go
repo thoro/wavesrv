@@ -113,6 +113,55 @@ func (svc *WorkspaceService) DeleteWorkspace(workspaceId string) (waveobj.Update
 	return updates, claimableWorkspace, nil
 }
 
+func (svc *WorkspaceService) SaveWorkspaceLayout_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		ArgNames: []string{"workspaceId"},
+	}
+}
+
+// SaveWorkspaceLayout snapshots the workspace's current tabs + panes into its own meta.
+func (svc *WorkspaceService) SaveWorkspaceLayout(workspaceId string) (waveobj.UpdatesRtnType, error) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	ctx = waveobj.ContextWithUpdates(ctx)
+	if err := wcore.SaveWorkspaceLayout(ctx, workspaceId); err != nil {
+		return nil, fmt.Errorf("error saving workspace layout: %w", err)
+	}
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("WorkspaceService:SaveWorkspaceLayout:SendUpdateEvents", recover())
+		}()
+		wps.Broker.SendUpdateEvents(updates)
+	}()
+	return updates, nil
+}
+
+func (svc *WorkspaceService) RestoreWorkspaceLayout_Meta() tsgenmeta.MethodMeta {
+	return tsgenmeta.MethodMeta{
+		ArgNames: []string{"workspaceId"},
+	}
+}
+
+// RestoreWorkspaceLayout rebuilds the workspace to its saved snapshot (wipe & recreate),
+// force-closing tabs/panes that have drifted from the snapshot.
+func (svc *WorkspaceService) RestoreWorkspaceLayout(workspaceId string) (waveobj.UpdatesRtnType, error) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancelFn()
+	ctx = waveobj.ContextWithUpdates(ctx)
+	if err := wcore.RestoreWorkspaceLayout(ctx, workspaceId); err != nil {
+		return nil, fmt.Errorf("error restoring workspace layout: %w", err)
+	}
+	updates := waveobj.ContextGetUpdatesRtn(ctx)
+	go func() {
+		defer func() {
+			panichandler.PanicHandler("WorkspaceService:RestoreWorkspaceLayout:SendUpdateEvents", recover())
+		}()
+		wps.Broker.SendUpdateEvents(updates)
+	}()
+	return updates, nil
+}
+
 func (svc *WorkspaceService) ListWorkspaces() (waveobj.WorkspaceList, error) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancelFn()
