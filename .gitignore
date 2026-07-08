@@ -46,4 +46,8 @@ docs/superpowers
 .claude
 
 .npm-cache/
-wave-native/
+
+# wave-native is committed into the monorepo (source only). Its build artifacts are
+# ignored via wave-native/.gitignore (.build/, vendor/ghostty/) plus the global bin/,
+# dist/ patterns above. vendor/libghostty/ and Fonts/ ARE tracked (needed to build).
+wave-native/vendor/ghostty/
