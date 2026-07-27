@@ -146,6 +146,16 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 		if err != nil {
 			return fmt.Errorf("error getting job manager status: %w", err)
 		}
+		if status == jobcontroller.JobManagerStatus_Running && !dsc.jobConnMatches(ctx, blockData.JobId) {
+			// The block's connection changed while its old job kept running (e.g. a
+			// conn switch whose teardown never completed before a restart). Reusing
+			// would silently attach a shell running on the WRONG host; kill the stale
+			// job and fall through to starting a fresh one on the current connection.
+			log.Printf("block %q durable job %s runs on a different connection; terminating it and starting fresh\n",
+				dsc.BlockId, blockData.JobId)
+			jobcontroller.TerminateAndDetachJob(ctx, blockData.JobId)
+			status = jobcontroller.JobManagerStatus_Done
+		}
 		if status == jobcontroller.JobManagerStatus_Running {
 			jobId = blockData.JobId
 		} else if status == jobcontroller.JobManagerStatus_Done {
@@ -192,6 +202,26 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 	}
 
 	return nil
+}
+
+// Whether the stored job's Connection matches this controller's connection.
+// Both sides normalize empty→"local" (job.Connection is stored normalized by
+// startNewJob; the controller's ConnName is raw block meta). Unreadable job
+// records count as a match so a transient DB error cannot kill a healthy job.
+func (dsc *DurableShellController) jobConnMatches(ctx context.Context, jobId string) bool {
+	job, err := wstore.DBMustGet[*waveobj.Job](ctx, jobId)
+	if err != nil {
+		return true
+	}
+	connName := dsc.ConnName
+	if conncontroller.IsLocalConnName(connName) {
+		connName = wshrpc.LocalConnName
+	}
+	jobConn := job.Connection
+	if jobConn == "" {
+		jobConn = wshrpc.LocalConnName
+	}
+	return jobConn == connName
 }
 
 func (dsc *DurableShellController) Stop(graceful bool, newStatus string, destroy bool) {
@@ -267,7 +297,16 @@ func (dsc *DurableShellController) startNewJob(ctx context.Context, blockMeta wa
 	}
 	shellType := shellutil.GetShellTypeFromShellPath(remoteInfo.Shell)
 	swapToken := makeSwapToken(ctx, ctx, dsc.BlockId, blockMeta, connName, shellType)
+	// The persistent remote sock only exists on an SSH/WSL host, where the spawned
+	// connserver symlinks it to its live socket (wshremote.go ConnServerInitCommand).
+	// The LOCAL connserver is in-process with no such socket, so a local durable
+	// shell must point its swap token (and the JWT minted from the same rpcContext)
+	// at wavesrv's own domain socket — otherwise the rc-file `wsh token` exchange
+	// dials a dead path and WAVETERM_JWT is never exported into the shell.
 	sockName := wavebase.GetPersistentRemoteSockName(wstore.GetClientId())
+	if connName == wshrpc.LocalConnName {
+		sockName = wavebase.GetDomainSocketName()
+	}
 	rpcContext := wshrpc.RpcContext{
 		ProcRoute: true,
 		SockName:  sockName,

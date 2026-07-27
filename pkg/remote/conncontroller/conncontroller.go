@@ -917,6 +917,13 @@ func (conn *SSHConn) persistWshInstalled(ctx context.Context, result WshCheckRes
 	if ok && connConfig.ConnWshEnabled != nil {
 		return
 	}
+	// A permission ERROR (timed-out / undeliverable install prompt) is not an answer:
+	// persisting wshenabled=false here would permanently disable wsh for the
+	// connection off a prompt the user never saw. Keep the in-memory downgrade for
+	// this session, but leave the config unset so the next connect asks again.
+	if result.NoWshCode == NoWshCode_PermissionError {
+		return
+	}
 	meta := make(map[string]any)
 	meta["conn:wshenabled"] = result.WshEnabled
 	err := wconfig.SetConnectionsConfigValue(conn.GetName(), meta)
