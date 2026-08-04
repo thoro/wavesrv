@@ -18,6 +18,7 @@ type WshRpcProxy struct {
 	ToRemoteCh   chan []byte
 	FromRemoteCh chan baseds.RpcInputChType
 	PeerInfo     string
+	toRemoteDone bool
 }
 
 func MakeRpcProxy(peerInfo string) *WshRpcProxy {
@@ -51,12 +52,33 @@ func (p *WshRpcProxy) SendRpcMessage(msg []byte, ingressLinkId baseds.LinkId, de
 		}
 		panichandler.PanicHandler(panicCtx, recover())
 	}()
+	// The lock (not just the recover) guards the send: a router goroutine can
+	// publish an event concurrently with connection teardown, and sending on the
+	// just-closed channel panics ("send on closed channel").
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+	if p.toRemoteDone {
+		return false
+	}
 	select {
 	case p.ToRemoteCh <- msg:
 		return true
 	default:
 		return false
 	}
+}
+
+// CloseToRemoteCh closes ToRemoteCh exactly once, synchronized with
+// SendRpcMessage so an in-flight send cannot hit the closed channel. All
+// teardown paths must use this instead of closing the channel directly.
+func (p *WshRpcProxy) CloseToRemoteCh() {
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+	if p.toRemoteDone {
+		return
+	}
+	p.toRemoteDone = true
+	close(p.ToRemoteCh)
 }
 
 func (p *WshRpcProxy) RecvRpcMessage() ([]byte, bool) {

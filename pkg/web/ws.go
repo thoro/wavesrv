@@ -263,6 +263,11 @@ func WriteLoop(conn wsConnAdapter, outputCh chan any, closeCh chan any, routeId 
 					break
 				}
 			}
+			// The deadline is ABSOLUTE, so it must be re-armed for every write. When
+			// only WritePing armed it, any event write landing >10s after the last
+			// ping hit an already-expired deadline and failed instantly with
+			// "i/o timeout", killing every busy connection every ~70s.
+			_ = conn.SetWriteDeadline(time.Now().Add(wsWriteWaitTimeout))
 			err = conn.WriteMessage(barr)
 			if err != nil {
 				conn.Close()
@@ -401,7 +406,7 @@ func runWSConnection(conn wsConnAdapter, stableId string) {
 	eventbus.RegisterWSChannel(wsConnId, stableId, outputCh)
 	defer eventbus.UnregisterWSChannel(wsConnId)
 	wproxy := wshutil.MakeRpcProxyWithSize(fmt.Sprintf("ws:%s", stableId), WebSocketChannelSize, WebSocketChannelSize)
-	defer close(wproxy.ToRemoteCh)
+	defer wproxy.CloseToRemoteCh()
 	registerConn(wsConnId, stableId, wproxy)
 	defer unregisterConn(wsConnId, stableId)
 	wg := &sync.WaitGroup{}

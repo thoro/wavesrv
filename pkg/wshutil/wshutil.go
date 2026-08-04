@@ -344,7 +344,7 @@ func handleDomainSocketClient(conn net.Conn, readCallback func()) {
 		defer func() {
 			conn.Close()
 			close(proxy.FromRemoteCh)
-			close(proxy.ToRemoteCh)
+			proxy.CloseToRemoteCh()
 			linkId := linkIdContainer.Load()
 			if linkId != baseds.NoLinkId {
 				DefaultRouter.UnregisterLink(baseds.LinkId(linkId))
