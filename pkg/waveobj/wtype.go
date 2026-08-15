@@ -30,6 +30,7 @@ const (
 	OType_Block       = "block"
 	OType_MainServer  = "mainserver"
 	OType_Job         = "job"
+	OType_Task        = "task"
 	OType_Temp        = "temp"
 	OType_Builder     = "builder" // not persisted to DB
 )
@@ -43,6 +44,7 @@ var ValidOTypes = map[string]bool{
 	OType_Block:       true,
 	OType_MainServer:  true,
 	OType_Job:         true,
+	OType_Task:        true,
 	OType_Temp:        true,
 	OType_Builder:     true,
 }
@@ -354,6 +356,31 @@ func (*Job) GetOType() string {
 	return OType_Job
 }
 
+// TaskLink is a mention of a tab or pane inside a Task's text. BlockId is empty
+// for tab-only mentions. Label is a display fallback for when the target has
+// been deleted; live targets resolve their current name instead.
+type TaskLink struct {
+	TabId   string `json:"tabid,omitempty"`
+	BlockId string `json:"blockid,omitempty"`
+	Label   string `json:"label,omitempty"`
+}
+
+type Task struct {
+	OID         string      `json:"oid"`
+	Version     int         `json:"version"`
+	WorkspaceId string      `json:"workspaceid"`
+	Text        string      `json:"text"`
+	Done        bool        `json:"done,omitempty"`
+	CreatedTs   int64       `json:"createdts"` // unix milli
+	DoneTs      int64       `json:"donets,omitempty"`
+	Links       []TaskLink  `json:"links,omitempty"`
+	Meta        MetaMapType `json:"meta"`
+}
+
+func (*Task) GetOType() string {
+	return OType_Task
+}
+
 func AllWaveObjTypes() []reflect.Type {
 	return []reflect.Type{
 		reflect.TypeOf(&Client{}),
@@ -364,6 +391,7 @@ func AllWaveObjTypes() []reflect.Type {
 		reflect.TypeOf(&LayoutState{}),
 		reflect.TypeOf(&MainServer{}),
 		reflect.TypeOf(&Job{}),
+		reflect.TypeOf(&Task{}),
 	}
 }
 

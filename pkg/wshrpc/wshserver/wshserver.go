@@ -162,6 +162,22 @@ func (ws *WshServer) UpdateTabNameCommand(ctx context.Context, tabId string, new
 	return nil
 }
 
+func (ws *WshServer) TaskListCommand(ctx context.Context, data wshrpc.CommandTaskListData) ([]*waveobj.Task, error) {
+	return wcore.ListTasks(ctx, data.WorkspaceId)
+}
+
+func (ws *WshServer) TaskCreateCommand(ctx context.Context, data wshrpc.CommandTaskCreateData) (*waveobj.Task, error) {
+	return wcore.CreateTask(ctx, data.WorkspaceId, data.Text, data.Links)
+}
+
+func (ws *WshServer) TaskUpdateCommand(ctx context.Context, data wshrpc.CommandTaskUpdateData) (*waveobj.Task, error) {
+	return wcore.UpdateTask(ctx, data.TaskId, data.Text, data.Done, data.Links, data.WorkspaceId)
+}
+
+func (ws *WshServer) TaskDeleteCommand(ctx context.Context, data wshrpc.CommandTaskDeleteData) error {
+	return wcore.DeleteTask(ctx, data.TaskId)
+}
+
 func (ws *WshServer) UpdateWorkspaceTabIdsCommand(ctx context.Context, workspaceId string, tabIds []string) error {
 	oref := waveobj.ORef{OType: waveobj.OType_Workspace, OID: workspaceId}
 	err := wcore.UpdateWorkspaceTabIds(ctx, workspaceId, tabIds)
@@ -205,7 +221,11 @@ func (ws *WshServer) MoveBlockToTabCommand(ctx context.Context, data wshrpc.Comm
 func (ws *WshServer) SetMetaCommand(ctx context.Context, data wshrpc.CommandSetMetaData) error {
 	log.Printf("SetMetaCommand: %s | %v\n", data.ORef, data.Meta)
 	oref := data.ORef
-	err := wstore.UpdateObjectMeta(ctx, oref, data.Meta, false)
+	// mergeSpecial=true: the RPC path carries explicit user intent, so "display:*"
+	// keys (e.g. Rename Pane's display:name) must merge instead of being silently
+	// dropped, and "prefix:*" clear semantics apply. Internal callers (controller
+	// meta churn) keep mergeSpecial=false so they can never touch display keys.
+	err := wstore.UpdateObjectMeta(ctx, oref, data.Meta, true)
 	if err != nil {
 		return fmt.Errorf("error updating object meta: %w", err)
 	}

@@ -936,6 +936,30 @@ func StreamTestCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) chan wshrpc.Resp
 	return sendRpcRequestResponseStreamHelper[int](w, "streamtest", nil, opts)
 }
 
+// command "taskcreate", wshserver.TaskCreateCommand
+func TaskCreateCommand(w *wshutil.WshRpc, data wshrpc.CommandTaskCreateData, opts *wshrpc.RpcOpts) (*waveobj.Task, error) {
+	resp, err := sendRpcRequestCallHelper[*waveobj.Task](w, "taskcreate", data, opts)
+	return resp, err
+}
+
+// command "taskdelete", wshserver.TaskDeleteCommand
+func TaskDeleteCommand(w *wshutil.WshRpc, data wshrpc.CommandTaskDeleteData, opts *wshrpc.RpcOpts) error {
+	_, err := sendRpcRequestCallHelper[any](w, "taskdelete", data, opts)
+	return err
+}
+
+// command "tasklist", wshserver.TaskListCommand
+func TaskListCommand(w *wshutil.WshRpc, data wshrpc.CommandTaskListData, opts *wshrpc.RpcOpts) ([]*waveobj.Task, error) {
+	resp, err := sendRpcRequestCallHelper[[]*waveobj.Task](w, "tasklist", data, opts)
+	return resp, err
+}
+
+// command "taskupdate", wshserver.TaskUpdateCommand
+func TaskUpdateCommand(w *wshutil.WshRpc, data wshrpc.CommandTaskUpdateData, opts *wshrpc.RpcOpts) (*waveobj.Task, error) {
+	resp, err := sendRpcRequestCallHelper[*waveobj.Task](w, "taskupdate", data, opts)
+	return resp, err
+}
+
 // command "termclearbuffer", wshserver.TermClearBufferCommand
 func TermClearBufferCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts) error {
 	_, err := sendRpcRequestCallHelper[any](w, "termclearbuffer", data, opts)

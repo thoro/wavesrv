@@ -963,7 +963,12 @@ func runOutputLoop(ctx context.Context, jobId string, streamId string, reader *s
 	}()
 
 	log.Printf("[job:%s] [stream:%s] output loop started", jobId, streamId)
-	buf := make([]byte, 4096)
+	// Sized to the stream read window (DefaultStreamRwnd): under heavy output the
+	// reader buffers up to a full window, and every Read here costs two filestore
+	// appends, a job DBGet, and two base64+JSON blockfile events. A 4KB buf turned
+	// one buffered 64KB window into 16x that overhead, flooding the frontend ws
+	// link with tiny append events until RPC traffic starved behind them.
+	buf := make([]byte, DefaultStreamRwnd)
 	for {
 		n, err := reader.Read(buf)
 		currentStreamId, _ := jobStreamIds.GetEx(jobId)

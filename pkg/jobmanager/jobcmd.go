@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/wavetermdev/waveterm/pkg/util/unixutil"
+	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 )
@@ -54,8 +56,17 @@ func MakeJobCmd(jobId string, cmdDef CmdDef) (*JobCmd, error) {
 		return nil, fmt.Errorf("invalid term size: %v", cmdDef.TermSize)
 	}
 	ecmd := exec.Command(cmdDef.Cmd, cmdDef.Args...)
+	// A stale/foreign cwd (e.g. cmd:cwd inherited from a pane on another host) would
+	// make pty start fail with a misleading "fork/exec <shell>: no such file or
+	// directory" (the ENOENT is from chdir, not the binary) and permanently wedge the
+	// block. Fall back to home like the legacy shellexec path does.
 	if cmdDef.Cwd != "" {
-		ecmd.Dir = cmdDef.Cwd
+		if _, statErr := os.Stat(cmdDef.Cwd); statErr == nil {
+			ecmd.Dir = cmdDef.Cwd
+		} else {
+			log.Printf("job %s cwd %q not usable (%v), falling back to home dir\n", jobId, cmdDef.Cwd, statErr)
+			ecmd.Dir = wavebase.GetHomeDir()
+		}
 	}
 	if len(cmdDef.Env) > 0 {
 		ecmd.Env = make([]string, 0, len(cmdDef.Env))

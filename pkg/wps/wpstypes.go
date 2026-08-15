@@ -34,6 +34,7 @@ const (
 	Event_AIModeConfig        = "waveai:modeconfig"    // type: wconfig.AIModeConfigUpdate
 	Event_BlockJobStatus      = "block:jobstatus"      // type: wshrpc.BlockJobStatusData
 	Event_Badge               = "badge"                // type: baseds.BadgeEvent
+	Event_TaskUpdate          = "task:update"          // type: TaskUpdateEventData
 )
 
 var AllEvents []string = []string{
@@ -56,6 +57,7 @@ var AllEvents []string = []string{
 	Event_AIModeConfig,
 	Event_BlockJobStatus,
 	Event_Badge,
+	Event_TaskUpdate,
 }
 
 type WaveEvent struct {
@@ -89,4 +91,10 @@ type WSFileEventData struct {
 	FileName string `json:"filename"`
 	FileOp   string `json:"fileop"`
 	Data64   string `json:"data64"`
+}
+
+// Published on every task mutation, scoped to "workspace:<id>". Carries only the
+// workspace so subscribers refetch via TaskListCommand (task lists are small).
+type TaskUpdateEventData struct {
+	WorkspaceId string `json:"workspaceid"`
 }

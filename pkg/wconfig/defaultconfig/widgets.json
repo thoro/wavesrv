@@ -50,5 +50,15 @@
                 "view": "processviewer"
             }
         }
+    },
+    "defwidget@tasks": {
+        "display:order": 0,
+        "icon": "list-check",
+        "label": "tasks",
+        "blockdef": {
+            "meta": {
+                "view": "tasks"
+            }
+        }
     }
 }

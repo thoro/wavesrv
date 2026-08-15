@@ -139,6 +139,9 @@ func DeleteWorkspace(ctx context.Context, workspaceId string, force bool) (bool,
 		}
 	}
 	windowId, _ := wstore.DBFindWindowForWorkspaceId(ctx, workspaceId)
+	if err := DeleteTasksForWorkspace(ctx, workspaceId); err != nil {
+		log.Printf("error deleting tasks for workspace %s: %v\n", workspaceId, err)
+	}
 	err = wstore.DBDelete(ctx, waveobj.OType_Workspace, workspaceId)
 	if err != nil {
 		return false, "", fmt.Errorf("error deleting workspace: %w", err)

@@ -201,6 +201,19 @@ func (dsc *DurableShellController) Start(ctx context.Context, blockMeta waveobj.
 		return fmt.Errorf("failed to reconnect to job: %w", err)
 	}
 
+	// ReconnectJob early-returns when the job is already connected (e.g.
+	// onConnectionUp reconnected it first, with nil rtOpts → the persisted
+	// CmdTermSize from the previous session). The pane's real grid size then
+	// never reaches the pty, and the shell miswraps long lines against the
+	// stale width. Push the resync size through the ordered input path; the
+	// job manager no-ops when the size is unchanged.
+	if rtOpts != nil && rtOpts.TermSize.Rows > 0 && rtOpts.TermSize.Cols > 0 {
+		termSize := rtOpts.TermSize
+		if inputErr := dsc.SendInput(&BlockInputUnion{TermSize: &termSize}); inputErr != nil {
+			log.Printf("block %q error sending termsize after reconnect: %v\n", dsc.BlockId, inputErr)
+		}
+	}
+
 	return nil
 }
 

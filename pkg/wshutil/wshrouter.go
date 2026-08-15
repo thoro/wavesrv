@@ -458,9 +458,10 @@ func (router *WshRouter) drainLinkBacklog_withLock(linkId baseds.LinkId, lm *lin
 	return backlog
 }
 
-func (router *WshRouter) processOneBacklogRound() {
+func (router *WshRouter) processOneBacklogRound() bool {
 	router.lock.Lock()
 	defer router.lock.Unlock()
+	progress := false
 	for linkId, backlog := range router.linkMsgBacklog {
 		lm := router.linkMap[linkId]
 		if lm == nil {
@@ -470,9 +471,13 @@ func (router *WshRouter) processOneBacklogRound() {
 			}
 			delete(router.linkMsgBacklog, linkId)
 			delete(router.backlogHighWaterMark, linkId)
+			progress = true
 			continue
 		}
 		newBacklog := router.drainLinkBacklog_withLock(linkId, lm, backlog)
+		if len(newBacklog) < len(backlog) {
+			progress = true
+		}
 		if len(newBacklog) == 0 {
 			highWater := router.backlogHighWaterMark[linkId]
 			if highWater > 0 {
@@ -484,6 +489,7 @@ func (router *WshRouter) processOneBacklogRound() {
 		}
 		router.linkMsgBacklog[linkId] = newBacklog
 	}
+	return progress
 }
 
 func (router *WshRouter) processBacklog() {
@@ -496,8 +502,12 @@ func (router *WshRouter) processBacklog() {
 			router.linkBacklogCond.Wait()
 		}
 		router.lock.Unlock()
-		router.processOneBacklogRound()
-		time.Sleep(50 * time.Millisecond)
+		// While rounds make progress, drain at full speed — a queued RPC command
+		// is latency-critical. Only back off when every backlogged link is blocked
+		// (its input channel stayed full for a whole round).
+		if !router.processOneBacklogRound() {
+			time.Sleep(50 * time.Millisecond)
+		}
 	}
 }
 

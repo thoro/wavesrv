@@ -95,6 +95,10 @@ type WshRpcInterface interface {
 	DisposeSuggestionsCommand(ctx context.Context, widgetId string) error
 	GetTabCommand(ctx context.Context, tabId string) (*waveobj.Tab, error)
 	UpdateTabNameCommand(ctx context.Context, tabId string, newName string) error
+	TaskListCommand(ctx context.Context, data CommandTaskListData) ([]*waveobj.Task, error)
+	TaskCreateCommand(ctx context.Context, data CommandTaskCreateData) (*waveobj.Task, error)
+	TaskUpdateCommand(ctx context.Context, data CommandTaskUpdateData) (*waveobj.Task, error)
+	TaskDeleteCommand(ctx context.Context, data CommandTaskDeleteData) error
 	UpdateWorkspaceTabIdsCommand(ctx context.Context, workspaceId string, tabIds []string) error
 	MoveTabCommand(ctx context.Context, data CommandMoveTabData) error
 	MoveBlockToTabCommand(ctx context.Context, data CommandMoveBlockToTabData) error
@@ -737,6 +741,30 @@ type TermRunningCommand struct {
 	BlockId string `json:"blockid"`
 	Pid     int    `json:"pid"`
 	Command string `json:"command"`
+}
+
+type CommandTaskListData struct {
+	WorkspaceId string `json:"workspaceid,omitempty"` // empty = all workspaces
+}
+
+type CommandTaskCreateData struct {
+	WorkspaceId string             `json:"workspaceid,omitempty"` // empty = unassigned (global) task
+	Text        string             `json:"text"`
+	Links       []waveobj.TaskLink `json:"links,omitempty"`
+}
+
+// nil fields are left unchanged; Done transitions also set/clear DoneTs.
+// A non-nil WorkspaceId moves the task ("" unassigns it).
+type CommandTaskUpdateData struct {
+	TaskId      string              `json:"taskid"`
+	Text        *string             `json:"text,omitempty"`
+	Done        *bool               `json:"done,omitempty"`
+	Links       *[]waveobj.TaskLink `json:"links,omitempty"`
+	WorkspaceId *string             `json:"workspaceid,omitempty"`
+}
+
+type CommandTaskDeleteData struct {
+	TaskId string `json:"taskid"`
 }
 
 type CommandElectronEncryptData struct {
