@@ -252,6 +252,9 @@ func ValidateAndExtractRpcContextFromToken(tokenStr string) (*wshrpc.RpcContext,
 	if err != nil {
 		return nil, err
 	}
+	if claims.Scope != "" {
+		return nil, fmt.Errorf("scoped token (scope=%s) is not valid for rpc authentication", claims.Scope)
+	}
 	return claimsToRpcCtx(claims), nil
 }
 

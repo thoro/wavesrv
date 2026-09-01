@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/jobcontroller"
 	"github.com/wavetermdev/waveterm/pkg/remote"
 	"github.com/wavetermdev/waveterm/pkg/remote/conncontroller"
+	"github.com/wavetermdev/waveterm/pkg/taskapi"
 	"github.com/wavetermdev/waveterm/pkg/util/ds"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
@@ -556,6 +558,9 @@ func makeSwapToken(ctx context.Context, logCtx context.Context, blockId string, 
 		} else {
 			token.Env["WAVETERM_WORKSPACEID"] = wsId
 		}
+		if conncontroller.IsLocalConnName(remoteName) && wsId != "" {
+			addTasksApiEnv(token.Env, wsId)
+		}
 	}
 	token.Env["WAVETERM_CLIENTID"] = wstore.GetClientId()
 	token.Env["WAVETERM_CONN"] = remoteName
@@ -568,4 +573,22 @@ func makeSwapToken(ctx context.Context, logCtx context.Context, blockId string, 
 	}
 	token.ScriptText = getCustomInitScript(logCtx, blockMeta, remoteName, shellType)
 	return token
+}
+
+// Local shells get a tasks-scoped token so sandboxed child processes (docker
+// containers etc.) can reach the loopback tasks API without full rpc access.
+// Containers reach the port via host.docker.internal instead of 127.0.0.1.
+func addTasksApiEnv(env map[string]string, workspaceId string) {
+	port := taskapi.GetPort()
+	if port == 0 {
+		return
+	}
+	tokenStr, err := taskapi.MintToken(workspaceId)
+	if err != nil {
+		log.Printf("error minting tasks api token: %v\n", err)
+		return
+	}
+	env[taskapi.EnvTasksPort] = strconv.Itoa(port)
+	env[taskapi.EnvTasksUrl] = fmt.Sprintf("http://127.0.0.1:%d", port)
+	env[taskapi.EnvTasksToken] = tokenStr
 }

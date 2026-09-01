@@ -27,6 +27,7 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/panichandler"
 	"github.com/wavetermdev/waveterm/pkg/remote/fileshare/wshfs"
 	"github.com/wavetermdev/waveterm/pkg/service"
+	"github.com/wavetermdev/waveterm/pkg/taskapi"
 	"github.com/wavetermdev/waveterm/pkg/util/envutil"
 	"github.com/wavetermdev/waveterm/pkg/util/shellutil"
 	"github.com/wavetermdev/waveterm/pkg/util/sigutil"
@@ -367,6 +368,11 @@ func main() {
 		wsAddrStr = wsListener.Addr().String()
 		webAddrStr = webListener.Addr().String()
 		go web.RunWebSocketServer(wsListener)
+	}
+	// Always TCP (even in no-TCP mode): serves sandboxed processes (docker
+	// containers) that cannot reach unix sockets; auth is a workspace-scoped JWT.
+	if err := taskapi.StartServer(); err != nil {
+		log.Printf("error starting tasks api server: %v\n", err)
 	}
 	unixListener, err := web.MakeUnixListener()
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 
 const (
 	IssuerWaveTerm = "waveterm"
+	ScopeTasks     = "tasks"
 )
 
 var (
@@ -34,6 +35,10 @@ type WaveJwtClaims struct {
 	JobId      string `json:"jobid,omitempty"`
 	Conn       string `json:"conn,omitempty"`
 	Router     bool   `json:"router,omitempty"`
+	// A non-empty Scope marks a restricted token (e.g. ScopeTasks). Full rpc
+	// authentication must reject scoped tokens.
+	Scope       string `json:"scope,omitempty"`
+	WorkspaceId string `json:"workspaceid,omitempty"`
 }
 
 type KeyPair struct {
