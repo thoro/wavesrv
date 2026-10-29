@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -16,7 +17,6 @@ import (
 	"github.com/wavetermdev/waveterm/pkg/util/ansistrip"
 	"github.com/wavetermdev/waveterm/pkg/wavebase"
 	"github.com/wavetermdev/waveterm/pkg/waveobj"
-	"github.com/wavetermdev/waveterm/pkg/wcore"
 	"github.com/wavetermdev/waveterm/pkg/wshrpc"
 	"github.com/wavetermdev/waveterm/pkg/wstore"
 )
@@ -107,15 +107,13 @@ func (ws *WshServer) TermClearBufferCommand(ctx context.Context, blockId string)
 func (ws *WshServer) TermScrollbackListCommand(ctx context.Context) ([]wshrpc.TermScrollbackEntry, error) {
 	var results []wshrpc.TermScrollbackEntry
 	seenBlockIds := make(map[string]bool)
-	workspaceList, err := wcore.ListWorkspaces(ctx)
+	// not wcore.ListWorkspaces: it skips unnamed workspaces, whose live blocks
+	// would then be reported as orphaned (and deleted by "delete orphaned").
+	workspaces, err := wstore.DBGetAllObjsByType[*waveobj.Workspace](ctx, waveobj.OType_Workspace)
 	if err != nil {
 		return nil, fmt.Errorf("error listing workspaces: %w", err)
 	}
-	for _, wsEntry := range workspaceList {
-		wsData, err := wcore.GetWorkspace(ctx, wsEntry.WorkspaceId)
-		if err != nil {
-			return nil, fmt.Errorf("error getting workspace %s: %w", wsEntry.WorkspaceId, err)
-		}
+	for _, wsData := range workspaces {
 		for _, tabId := range wsData.TabIds {
 			tab, err := wstore.DBMustGet[*waveobj.Tab](ctx, tabId)
 			if err != nil {
@@ -133,7 +131,7 @@ func (ws *WshServer) TermScrollbackListCommand(ctx context.Context) ([]wshrpc.Te
 					entry.Controller = blk.Meta.GetString(waveobj.MetaKey_Controller, "")
 					entry.Connection = blk.Meta.GetString(waveobj.MetaKey_Connection, "")
 				}
-				entry.WorkspaceId = wsEntry.WorkspaceId
+				entry.WorkspaceId = wsData.OID
 				entry.WorkspaceName = wsData.Name
 				entry.TabId = tabId
 				entry.TabName = tab.Name
@@ -157,6 +155,53 @@ func (ws *WshServer) TermScrollbackListCommand(ctx context.Context) ([]wshrpc.Te
 		results = append(results, *entry)
 	}
 	return results, nil
+}
+
+// TermDeleteOrphanedBuffersCommand deletes the whole filestore zone of every
+// orphaned term buffer (as reported by TermScrollbackListCommand) whose block
+// or job no longer exists. Unlike
+// TermClearBufferCommand this removes the files instead of truncating them:
+// nothing references these zones, so there is no live writer whose file opts
+// must survive. Orphan status is recomputed here rather than trusting a
+// client-supplied list, so a buffer that became referenced since the client
+// last listed is never deleted. Returns the number of zones deleted.
+func (ws *WshServer) TermDeleteOrphanedBuffersCommand(ctx context.Context) (int, error) {
+	entries, err := ws.TermScrollbackListCommand(ctx)
+	if err != nil {
+		return 0, err
+	}
+	deleted := 0
+	for _, entry := range entries {
+		if !entry.Orphaned {
+			continue
+		}
+		// a still-existing block may be mid-creation or awaiting GC; its zone is
+		// not ours to drop.
+		if termZoneOwnerExists(ctx, entry.BlockId) {
+			continue
+		}
+		if err := filestore.WFS.DeleteZone(ctx, entry.BlockId); err != nil {
+			log.Printf("TermDeleteOrphanedBuffersCommand: error deleting zone %s: %v\n", entry.BlockId, err)
+			continue
+		}
+		deleted++
+	}
+	log.Printf("TermDeleteOrphanedBuffersCommand: deleted %d orphaned buffer zones\n", deleted)
+	return deleted, nil
+}
+
+// termZoneOwnerExists reports whether zoneId is still a block or a job (or the
+// lookup failed). A durable job's output is a "term" file in a zone keyed by
+// the job id, which no tab references, so a live job's zone is listed as
+// orphaned; deleting it would also reset the job's reconnect stream seq.
+func termZoneOwnerExists(ctx context.Context, zoneId string) bool {
+	for _, otype := range []string{waveobj.OType_Block, waveobj.OType_Job} {
+		exists, err := wstore.DBExistsORef(ctx, waveobj.MakeORef(otype, zoneId))
+		if err != nil || exists {
+			return true
+		}
+	}
+	return false
 }
 
 // returns (nil, err) when the block has no term file

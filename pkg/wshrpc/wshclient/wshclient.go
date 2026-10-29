@@ -966,6 +966,12 @@ func TermClearBufferCommand(w *wshutil.WshRpc, data string, opts *wshrpc.RpcOpts
 	return err
 }
 
+// command "termdeleteorphanedbuffers", wshserver.TermDeleteOrphanedBuffersCommand
+func TermDeleteOrphanedBuffersCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (int, error) {
+	resp, err := sendRpcRequestCallHelper[int](w, "termdeleteorphanedbuffers", nil, opts)
+	return resp, err
+}
+
 // command "termgetrunningcommands", wshserver.TermGetRunningCommandsCommand
 func TermGetRunningCommandsCommand(w *wshutil.WshRpc, data wshrpc.CommandTermGetRunningCommandsData, opts *wshrpc.RpcOpts) ([]wshrpc.TermRunningCommand, error) {
 	resp, err := sendRpcRequestCallHelper[[]wshrpc.TermRunningCommand](w, "termgetrunningcommands", data, opts)

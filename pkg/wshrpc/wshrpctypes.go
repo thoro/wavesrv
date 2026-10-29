@@ -183,6 +183,7 @@ type WshRpcInterface interface {
 	TermSearchScrollbackCommand(ctx context.Context, data CommandTermSearchScrollbackData) (*CommandTermSearchScrollbackRtnData, error)
 	TermClearBufferCommand(ctx context.Context, blockId string) error
 	TermScrollbackListCommand(ctx context.Context) ([]TermScrollbackEntry, error)
+	TermDeleteOrphanedBuffersCommand(ctx context.Context) (int, error)
 	TermGetRunningCommandsCommand(ctx context.Context, data CommandTermGetRunningCommandsData) ([]TermRunningCommand, error)
 
 	// file
