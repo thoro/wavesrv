@@ -15,7 +15,6 @@ Wave Terminal's `wsh` command provides CLI access to Wave Terminal features. The
 2. **Command Files** - Individual command implementations in `cmd/wsh/cmd/wshcmd-*.go`
 3. **RPC Client** - Communication with Wave Terminal backend via `RpcClient`
 4. **Activity Tracking** - Telemetry for command usage analytics
-5. **Documentation** - User-facing docs in `docs/docs/wsh-reference.mdx`
 
 Commands are registered in their `init()` functions and execute through the Cobra framework.
 
@@ -338,71 +337,13 @@ if err != nil {
 - `Route`: Route ID for targeting specific components
 - Available routes: `wshutil.ControlRoute`, `wshutil.MakeTabRouteId(tabId)`
 
-### Step 7: Add Documentation
+### Step 7: Write the Help Text
 
-Add your command to `docs/docs/wsh-reference.mdx`:
-
-````markdown
-## mycommand
-
-Brief description of what the command does.
-
-```sh
-wsh mycommand [args] [flags]
-```
-
-Detailed explanation of the command's purpose and behavior.
-
-Flags:
-- `-n, --name <value>` - description of this flag
-- `-v, --verbose` - enable verbose output
-- `-b, --block <blockid>` - specify target block (default: current block)
-
-Examples:
-
-```sh
-# Basic usage
-wsh mycommand arg1
-
-# With flags
-wsh mycommand --name value arg1
-
-# With block targeting
-wsh mycommand -b 2 arg1
-
-# Complex example
-wsh mycommand -v --name "example" arg1 arg2
-```
-
-Additional notes, tips, or warnings about the command.
-
----
-````
-
-**Documentation Guidelines:**
-- Place in alphabetical order with other commands
-- Include command signature with argument pattern
-- List all flags with short and long versions
-- Provide practical examples (at least 3-5)
-- Explain common use cases and patterns
-- Add tips or warnings if relevant
-- Use `---` separator between commands
+There is no docs site any more: the cobra `Short` and `Long` fields (shown by `wsh help` and `wsh mycommand --help`) are the command's only user-facing documentation. Put the usage pattern, what each flag does and a few examples in `Long`.
 
 ### Step 8: Test Your Command
 
-Build and test the command:
-
-```bash
-# Build wsh
-task build:wsh
-
-# Or build everything
-task build
-
-# Test the command
-./bin/wsh/wsh mycommand --help
-./bin/wsh/wsh mycommand arg1 arg2
-```
+`go vet ./cmd/wsh/...` checks that it compiles. Trying the command for real needs a `wsh` binary (see the README's build section) run inside a Wave terminal, so it can reach wavesrv.
 
 **Testing Checklist:**
 - [ ] Help message displays correctly
@@ -451,25 +392,6 @@ func versionRun(cmd *cobra.Command, args []string) (rtnErr error) {
     return nil
 }
 ```
-
-#### Documentation
-
-````markdown
-## version
-
-Print the current Wave Terminal version.
-
-```sh
-wsh version
-```
-
-Examples:
-
-```sh
-# Print version
-wsh version
-```
-````
 
 ### Example 2: Command with Flags and RPC
 
@@ -542,37 +464,6 @@ func setTitleRun(cmd *cobra.Command, args []string) (rtnErr error) {
 }
 ```
 
-#### Documentation
-
-````markdown
-## settitle
-
-Set the title for a block.
-
-```sh
-wsh settitle [title]
-```
-
-Update the display title for the current or specified block. Optionally set an icon as well.
-
-Flags:
-- `-i, --icon <icon>` - set block icon along with title
-- `-b, --block <blockid>` - specify target block (default: current block)
-
-Examples:
-
-```sh
-# Set title for current block
-wsh settitle "My Terminal"
-
-# Set title and icon
-wsh settitle --icon "terminal" "Development Shell"
-
-# Set title for specific block
-wsh settitle -b 2 "Build Output"
-```
-````
-
 ### Example 3: Subcommands
 
 **Use case:** Command with multiple subcommands (like `wsh conn`)
@@ -642,40 +533,6 @@ func myGroupAddRun(cmd *cobra.Command, args []string) (rtnErr error) {
     return nil
 }
 ```
-
-#### Documentation
-
-````markdown
-## mygroup
-
-Manage something with subcommands.
-
-### list
-
-List all items.
-
-```sh
-wsh mygroup list
-```
-
-### add
-
-Add a new item.
-
-```sh
-wsh mygroup add [name]
-```
-
-Examples:
-
-```sh
-# List items
-wsh mygroup list
-
-# Add an item
-wsh mygroup add "new-item"
-```
-````
 
 ## Common Patterns
 
@@ -906,8 +763,8 @@ When adding a new wsh command:
 - [ ] Implement command function with activity tracking
 - [ ] Add command to `rootCmd` in `init()` function
 - [ ] Define flags in `init()` function if needed
-- [ ] Add documentation to `docs/docs/wsh-reference.mdx`
-- [ ] Build and test: `task build:wsh`
+- [ ] Describe usage, flags and examples in `Long`
+- [ ] Check it compiles: `go vet ./cmd/wsh/...`
 - [ ] Test help: `wsh [commandname] --help`
 - [ ] Test all flag combinations
 - [ ] Test error cases
@@ -917,5 +774,4 @@ When adding a new wsh command:
 - **Root Command**: `cmd/wsh/cmd/wshcmd-root.go` - Main command setup and utilities
 - **RPC Client**: `pkg/wshrpc/wshclient/` - Client functions for RPC calls
 - **RPC Types**: `pkg/wshrpc/wshrpctypes.go` - RPC request/response data structures
-- **Documentation**: `docs/docs/wsh-reference.mdx` - User-facing command reference
 - **Examples**: `cmd/wsh/cmd/wshcmd-*.go` - Existing command implementations

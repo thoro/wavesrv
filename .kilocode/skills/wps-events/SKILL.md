@@ -62,24 +62,9 @@ var AllEvents []string = []string{
 }
 ```
 
-### Step 3: Register in WaveEventDataTypes (REQUIRED)
+The `WaveEventDataTypes` registration that the comment in `wpstypes.go` asks for lived in the TypeScript generator, which was removed with the Electron frontend; there is nothing to register.
 
-You **must** add an entry to `WaveEventDataTypes` in `pkg/tsgen/tsgenevent.go`. This drives TypeScript type generation for the event's `data` field:
-
-```go
-var WaveEventDataTypes = map[string]reflect.Type{
-    // ... existing entries ...
-    wps.Event_YourNewEvent: reflect.TypeOf(YourEventData{}),        // value type
-    // wps.Event_YourNewEvent: reflect.TypeOf((*YourEventData)(nil)), // pointer type
-    // wps.Event_YourNewEvent: nil,                                   // no data (type: none)
-}
-```
-
-- Use `reflect.TypeOf(YourType{})` for value types
-- Use `reflect.TypeOf((*YourType)(nil))` for pointer types
-- Use `nil` if no data is sent for the event
-
-### Step 4: Define Event Data Structure (Optional)
+### Step 3: Define Event Data Structure (Optional)
 
 If your event carries structured data, define a type for it:
 
@@ -90,27 +75,7 @@ type YourEventData struct {
 }
 ```
 
-### Step 5: Expose Type to Frontend (If Needed)
-
-If your event data type isn't already exposed via an RPC call, you need to add it to `pkg/tsgen/tsgen.go` so TypeScript types are generated:
-
-```go
-// add extra types to generate here
-var ExtraTypes = []any{
-    waveobj.ORef{},
-    // ... other types ...
-    uctypes.RateLimitInfo{},  // Example: already added
-    YourEventData{},          // Add your new type here
-}
-```
-
-Then run code generation:
-
-```bash
-task generate
-```
-
-This will update `frontend/types/gotypes.d.ts` with TypeScript definitions for your type, ensuring type safety in the frontend when handling these events.
+Clients outside this repo (the native app) decode `data` from these JSON tags, so mirror the type there.
 
 ## Publishing Events
 
@@ -210,16 +175,12 @@ func updateRateLimit(info *uctypes.RateLimitInfo) {
 }
 ```
 
-### 3. Subscribe to the Event (Frontend)
+### 3. Subscribe to the Event (Client)
 
-In the frontend, subscribe to events via WebSocket:
+Clients subscribe with the `eventsub` RPC, sending a `wps.SubscriptionRequest`:
 
-```typescript
-// Subscribe to rate limit updates
-const subscription = {
-  event: "waveai:ratelimit",
-  allscopes: true, // Receive all rate limit events
-};
+```json
+{ "event": "waveai:ratelimit", "allscopes": true }
 ```
 
 ## Subscribing to Events
@@ -322,7 +283,7 @@ To debug event flow:
 1. Check broker subscription map: `wps.Broker.SubMap`
 2. View persisted events: `wps.Broker.ReadEventHistory(eventType, scope, maxItems)`
 3. Add logging in publish/subscribe methods
-4. Monitor WebSocket traffic in browser dev tools
+4. Monitor the client's WebSocket / Unix socket traffic
 
 ## Quick Reference
 
@@ -330,10 +291,7 @@ When adding a new event:
 
 - [ ] Add event constant to [`pkg/wps/wpstypes.go`](pkg/wps/wpstypes.go) with a `// type: <TypeName>` comment (use `none` if no data)
 - [ ] Add the constant to `AllEvents` in [`pkg/wps/wpstypes.go`](pkg/wps/wpstypes.go)
-- [ ] **REQUIRED**: Add an entry to `WaveEventDataTypes` in [`pkg/tsgen/tsgenevent.go`](pkg/tsgen/tsgenevent.go) — use `nil` for events with no data
 - [ ] Define event data structure (if needed)
-- [ ] Add data type to `pkg/tsgen/tsgen.go` for frontend use (if not already exposed via RPC)
-- [ ] Run `task generate` to update TypeScript types
 - [ ] Publish events using `wps.Broker.Publish()`
 - [ ] Use goroutines for non-blocking publish when appropriate
 - [ ] Subscribe to events in relevant components
