@@ -1,14 +1,13 @@
-# Release build. Two jobs:
+# Release build — the Go binaries only:
 #
-#   build-go     — builds the wavesrv backend (macOS arm64 + x64) and the wsh CLI
-#                  (all supported targets), then publishes them as release assets.
-#   build-native — reuses the wavesrv/wsh binaries build-go produced (never rebuilds
-#                  them), wraps the Swift app in a signed + notarized WaveNative.app,
-#                  and attaches the zip to the release.
+#   build-go — builds the wavesrv backend (macOS arm64 + x64) and the wsh CLI
+#              (all supported targets), then publishes them as release assets.
+#
+# The native macOS app (thoro/wave-native) is built and released from its own repo.
 #
 # Trigger: publishing a drafted release (see release-drafter) creates the tag and
 # fires `release: published`. `workflow_dispatch` is a dry run — it builds everything
-# and uploads workflow artifacts, but signs nothing and touches no release.
+# and uploads workflow artifacts, but touches no release.
 name: Release
 run-name: Release ${{ github.event.release.tag_name || github.sha }}
 on:
@@ -92,7 +91,7 @@ jobs:
                           -o "dist/bin/$out" cmd/wsh/main-wsh.go
                   done
 
-            - name: Upload workflow artifacts (consumed by build-native)
+            - name: Upload workflow artifacts
               uses: actions/upload-artifact@v5
               with:
                   name: go-binaries
@@ -102,78 +101,5 @@ jobs:
             - name: Publish to release
               if: needs.setup.outputs.is_release == 'true'
               run: gh release upload "${{ github.event.release.tag_name }}" dist/bin/* --clobber
-              env:
-                  GH_TOKEN: ${{ github.token }}
-
-    build-native:
-        needs: [setup, build-go]
-        runs-on: macos-latest
-        permissions:
-            contents: write # upload release assets
-        env:
-            VERSION: ${{ needs.setup.outputs.version }}
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Fetch reused wavesrv + wsh binaries
-              uses: actions/download-artifact@v4
-              with:
-                  name: go-binaries
-                  path: /tmp/go-binaries
-
-            - name: Stage binaries into wave-native/bin
-              run: |
-                  set -euo pipefail
-                  mkdir -p wave-native/bin
-                  cp "/tmp/go-binaries/wavesrv.arm64" wave-native/bin/wavesrv.arm64
-                  cp "/tmp/go-binaries/wsh-$VERSION-darwin.arm64" wave-native/bin/
-                  chmod +x wave-native/bin/*
-
-            - name: Import Developer ID certificate
-              if: needs.setup.outputs.is_release == 'true'
-              uses: apple-actions/import-codesign-certs@v3
-              with:
-                  p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12 }}
-                  p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-
-            - name: Build + bundle WaveNative.app
-              working-directory: wave-native
-              env:
-                  WAVE_SHORT_VERSION: ${{ needs.setup.outputs.version }}
-              run: ./scripts/bundle-app.sh release
-
-            - name: Sign + notarize
-              if: needs.setup.outputs.is_release == 'true'
-              working-directory: wave-native
-              env:
-                  WAVE_SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
-                  WAVE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-                  WAVE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-                  APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
-              run: |
-                  set -euo pipefail
-                  KEY=/tmp/notary-key.p8
-                  printf '%s' "$APPLE_NOTARY_KEY_P8" > "$KEY"
-                  WAVE_NOTARY_KEY="$KEY" ./scripts/sign-and-notarize.sh
-                  rm -f "$KEY"
-
-            - name: Package app zip
-              working-directory: wave-native
-              run: |
-                  set -euo pipefail
-                  ZIP="dist/WaveNative-$VERSION-arm64.zip"
-                  ditto -c -k --keepParent dist/WaveNative.app "$ZIP"
-                  echo "ZIP=wave-native/$ZIP" >> "$GITHUB_ENV"
-
-            - name: Upload workflow artifact
-              uses: actions/upload-artifact@v5
-              with:
-                  name: WaveNative-app
-                  path: ${{ env.ZIP }}
-                  retention-days: 7
-
-            - name: Publish to release
-              if: needs.setup.outputs.is_release == 'true'
-              run: gh release upload "${{ github.event.release.tag_name }}" "$ZIP" --clobber
               env:
                   GH_TOKEN: ${{ github.token }}
