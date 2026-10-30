@@ -6,22 +6,10 @@
     "editor.insertSpaces": false,
     "prettier.useEditorConfig": true,
     "diffEditor.renderSideBySide": false,
-    "[javascript]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[javascriptreact]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
     "[typescript]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
     },
     "[typescriptreact]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[less]": {
-        "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[scss]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
     },
     "[css]": {
@@ -45,9 +33,6 @@
     },
     "[go]": {
         "editor.defaultFormatter": "golang.go"
-    },
-    "[mdx]": {
-        "editor.wordWrap": "on"
     },
     "[md]": {
         "editor.wordWrap": "on"

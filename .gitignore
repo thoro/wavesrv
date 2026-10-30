@@ -1,53 +1,23 @@
 .task
-frontend/dist
 dist/
-dist-dev/
-frontend/node_modules
 node_modules/
-frontend/bindings
-bindings/
 *.log
 *.tsbuildinfo
 bin/
-*.dmg
 *.exe
 .DS_Store
 *~
 out/
-make/
 artifacts/
-mikework/
 aiplans/
-manifests/
 .env
 out
 .kilocode/package-lock.json
-
-# Yarn Modern
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-
-
-*storybook.log
-storybook-static/
-
-test-results.xml
-
-docsite/
 
 .kilo-format-temp-*
 .superpowers
 docs/superpowers
 .claude
 
-.npm-cache/
-
-# wave-native is committed into the monorepo (source only). Its build artifacts are
-# ignored via wave-native/.gitignore (.build/, vendor/ghostty/) plus the global bin/,
-# dist/ patterns above. vendor/libghostty/ and Fonts/ ARE tracked (needed to build).
-wave-native/vendor/ghostty/
+# nested checkout of thoro/wave-native
+/wave-native/

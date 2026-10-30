@@ -12,11 +12,10 @@ This guide explains how to add a new configuration setting to Wave Terminal's hi
 Wave Terminal uses a hierarchical configuration system with:
 
 1. **Go Struct Definitions** - Type-safe configuration structure in `pkg/wconfig/settingsconfig.go`
-2. **JSON Schema** - Auto-generated validation schema in `schema/settings.json`
+2. **JSON Schema** - Editor validation schema in `schema/settings.json` (served by wavesrv, maintained by hand)
 3. **Default Values** - Built-in defaults in `pkg/wconfig/defaultconfig/settings.json`
-4. **User Configuration** - User overrides in `~/.config/waveterm/settings.json`
-5. **Block Metadata** - Block-level overrides in `pkg/waveobj/wtypemeta.go`
-6. **Documentation** - User-facing docs in `docs/docs/config.mdx`
+4. **User Configuration** - User overrides in `$WAVETERM_CONFIG_HOME/settings.json`
+5. **Block Metadata** - Block-level overrides in `pkg/waveobj/wtypemeta.go` (key constants in `pkg/waveobj/metaconsts.go`)
 
 Settings cascade from defaults → user settings → connection config → block overrides.
 
@@ -116,85 +115,24 @@ If your setting should have a default value, add it to `pkg/wconfig/defaultconfi
 - Keep defaults conservative and safe
 - Boolean settings often don't need defaults if `false` is the correct default
 
-### Step 3: Update Documentation
+### Step 3: Update the JSON Schema and Meta Constants
 
-Add your new setting to the configuration table in `docs/docs/config.mdx`:
+The generators that used to produce these were removed with the Electron frontend, so update them by hand:
 
-```markdown
-| Key Name            | Type     | Function                                  |
-| ------------------- | -------- | ----------------------------------------- |
-| mynew:setting       | string   | Description of what this setting controls |
-| mynew:boolsetting   | bool     | Enable/disable some feature               |
-| mynew:numbersetting | float    | Numeric setting for some parameter        |
-| mynew:intsetting    | int      | Integer setting for some configuration    |
-| mynew:arraysetting  | string[] | Array of strings for multiple values      |
-```
+- `schema/settings.json` - add a property for the key, at the same position as the struct field (2-space indent):
 
-**Documentation Guidelines:**
+  ```json
+  "mynew:setting": {
+    "type": "string"
+  },
+  ```
 
-- Provide clear, concise descriptions
-- For new settings in upcoming releases, add `<VersionBadge version="v0.14" />`
-- Update the default configuration example if you added defaults
-- Explain what values are valid and what they do
+- `pkg/wconfig/metaconsts.go` - add the matching `ConfigKey_*` constant, at the same position as the struct field
+- `pkg/waveobj/metaconsts.go` - if you added a `MetaTSType` field, add the matching `MetaKey_*` constant
 
-### Step 4: Regenerate Schema and TypeScript Types
+Both `metaconsts.go` files still carry their "Generated Code" header; edit them anyway.
 
-Run the generate task to automatically regenerate the JSON schema and TypeScript types:
-
-```bash
-task generate
-```
-
-**What this does:**
-
-- Runs `task build:schema` (automatically generates JSON schema from Go structs)
-- Generates TypeScript type definitions in `frontend/types/gotypes.d.ts`
-- Generates RPC client APIs
-- Generates metadata constants
-
-**Important:** The JSON schema in `schema/settings.json` is **automatically generated** from the Go struct definitions - you don't need to edit it manually.
-
-### Step 5: Use in Frontend Code
-
-Access your new setting in React components:
-
-```typescript
-import { getOverrideConfigAtom, getSettingsKeyAtom, useAtomValue } from "@/store/global";
-
-// In a React component
-const MyComponent = ({ blockId }: { blockId: string }) => {
-    // Use override config atom for hierarchical resolution
-    // This automatically checks: block metadata → connection config → global settings → default
-    const mySettingAtom = getOverrideConfigAtom(blockId, "mynew:setting");
-    const mySetting = useAtomValue(mySettingAtom) ?? "fallback value";
-
-    // For global-only settings (no block overrides)
-    const globalOnlySetting = useAtomValue(getSettingsKeyAtom("mynew:globalsetting")) ?? "fallback";
-
-    return <div>Setting value: {mySetting}</div>;
-};
-```
-
-**Frontend Configuration Patterns:**
-
-```typescript
-// 1. Settings with block-level overrides (recommended for most view/display settings)
-const termFontSize = useAtomValue(getOverrideConfigAtom(blockId, "term:fontsize")) ?? 12;
-
-// 2. Global-only settings (app-wide settings that don't vary by block)
-const appGlobalHotkey = useAtomValue(getSettingsKeyAtom("app:globalhotkey")) ?? "";
-
-// 3. Connection-specific settings
-const connStatus = useAtomValue(getConnStatusAtom(connectionName));
-```
-
-**When to use each pattern:**
-
-- Use `getOverrideConfigAtom()` for settings that can vary by block or connection (most UI/display settings)
-- Use `getSettingsKeyAtom()` for app-level settings that are always global
-- Always provide a fallback value with `??` operator
-
-### Step 6: Use in Backend Code
+### Step 4: Use in Backend Code
 
 Access settings in Go code:
 
@@ -211,6 +149,8 @@ if fullConfig.Settings.MyIntSetting != nil {
     // Use intValue
 }
 ```
+
+Clients (the native app) read the merged config with the `getfullconfig` RPC and get changes through the `config` event, keyed by the JSON names; a new key needs handling there too.
 
 ## Complete Examples
 
@@ -235,41 +175,29 @@ type SettingsType struct {
 }
 ```
 
-#### 3. Documentation (`docs/docs/config.mdx`)
+#### 3. Schema and Config Key
 
-```markdown
-| app:hideaibutton <VersionBadge version="v0.14" /> | bool | Hide the AI button in the tab bar (defaults to false) |
+`schema/settings.json`:
+
+```json
+"app:hideaibutton": {
+  "type": "boolean"
+},
 ```
 
-#### 4. Generate Types
+`pkg/wconfig/metaconsts.go`:
 
-```bash
-task generate
+```go
+ConfigKey_AppHideAiButton = "app:hideaibutton"
 ```
 
-#### 5. Frontend Usage
-
-```typescript
-import { getSettingsKeyAtom } from "@/store/global";
-
-const TabBar = () => {
-    const hideAiButton = useAtomValue(getSettingsKeyAtom("app:hideaibutton"));
-
-    if (hideAiButton) {
-        return null; // Don't render AI button
-    }
-
-    return <button>AI</button>;
-};
-```
-
-#### 6. Usage Examples
+#### 4. Usage Examples
 
 ```bash
 # Set in settings file
 wsh setconfig app:hideaibutton=true
 
-# Or edit ~/.config/waveterm/settings.json
+# Or edit $WAVETERM_CONFIG_HOME/settings.json
 {
   "app:hideaibutton": true
 }
@@ -305,38 +233,24 @@ type MetaTSType struct {
 }
 ```
 
-#### 4. Documentation (`docs/docs/config.mdx`)
+#### 4. Schema and Key Constants
 
-```markdown
-| term:bellsound <VersionBadge version="v0.14" /> | string | Sound to play for terminal bell ("default", "none", or custom sound file path) |
+`schema/settings.json`:
+
+```json
+"term:bellsound": {
+  "type": "string"
+},
 ```
 
-#### 5. Generate Types
+`pkg/wconfig/metaconsts.go` and `pkg/waveobj/metaconsts.go`:
 
-```bash
-task generate
+```go
+ConfigKey_TermBellSound = "term:bellsound"
+MetaKey_TermBellSound   = "term:bellsound"
 ```
 
-#### 6. Frontend Usage
-
-```typescript
-import { getOverrideConfigAtom } from "@/store/global";
-
-const TerminalView = ({ blockId }: { blockId: string }) => {
-    // Use override config for hierarchical resolution
-    const bellSoundAtom = getOverrideConfigAtom(blockId, "term:bellsound");
-    const bellSound = useAtomValue(bellSoundAtom) ?? "default";
-
-    const playBellSound = () => {
-        if (bellSound === "none") return;
-        // Play the bell sound
-    };
-
-    return <div>Terminal with bell: {bellSound}</div>;
-};
-```
-
-#### 7. Usage Examples
+#### 5. Usage Examples
 
 ```bash
 # Set globally in settings file
@@ -348,7 +262,7 @@ wsh setmeta term:bellsound="none"
 # Set for specific block
 wsh setmeta --block BLOCK_ID term:bellsound="beep"
 
-# Or edit ~/.config/waveterm/settings.json
+# Or edit $WAVETERM_CONFIG_HOME/settings.json
 {
   "term:bellsound": "custom.wav"
 }
@@ -375,25 +289,20 @@ TermClear bool `json:"term:*,omitempty"`
 
 Settings can be overridden at the block level using metadata:
 
-```typescript
-import { RpcApi } from "@/app/store/wshclientapi";
-import { TabRpcClient } from "@/app/store/wshrpcutil";
-import { WOS } from "@/store/global";
-
-// Set block-specific override
-await RpcApi.SetMetaCommand(TabRpcClient, {
-  oref: WOS.makeORef("block", blockId),
-  meta: { "mynew:setting": "block-specific value" },
-});
+```go
+err := wshclient.SetMetaCommand(RpcClient, wshrpc.CommandSetMetaData{
+    ORef: waveobj.MakeORef(waveobj.OType_Block, blockId),
+    Meta: waveobj.MetaMapType{"mynew:setting": "block-specific value"},
+}, nil)
 ```
 
 ## Common Pitfalls
 
-### 1. Forgetting to Run `task generate`
+### 1. Forgetting the Schema or Meta Constant
 
-**Problem:** TypeScript types not updated, schema out of sync
+**Problem:** Editors don't validate or complete the new key; no `ConfigKey_*` / `MetaKey_*` constant to reference
 
-**Solution:** Always run `task generate` after modifying Go structs
+**Solution:** Update `schema/settings.json` and the `metaconsts.go` files by hand after modifying the Go structs
 
 ### 2. Type Mismatch Between Settings and Metadata
 
@@ -403,19 +312,9 @@ await RpcApi.SetMetaCommand(TabRpcClient, {
 
 ### 3. Not Providing Fallback Values
 
-**Problem:** Component breaks if setting is undefined
+**Problem:** Code breaks if the setting is unset (`omitempty` keys are absent from the JSON)
 
-**Solution:** Always use `??` operator with fallback:
-
-```typescript
-const value = useAtomValue(getSettingsKeyAtom("key")) ?? "default";
-```
-
-### 4. Using Wrong Config Atom
-
-**Problem:** Using `getSettingsKeyAtom()` for settings that need block overrides
-
-**Solution:** Use `getOverrideConfigAtom()` for any setting in `MetaTSType`
+**Solution:** Check optional (pointer) settings for `nil` and fall back to a default
 
 ## Best Practices
 
@@ -438,20 +337,12 @@ const value = useAtomValue(getSettingsKeyAtom("key")) ?? "default";
 - **Provide sensible defaults** for settings users will commonly change
 - **Omit defaults** for advanced/optional settings
 - **Keep defaults safe** - don't enable experimental features by default
-- **Document defaults** clearly in config.mdx
 
 ### Block Overrides
 
 - **Enable for view/display settings**: Font sizes, colors, themes, etc.
 - **Don't enable for app-wide settings**: Global hotkeys, window behavior, etc.
 - **Consider the use case**: Would a user want different values per block or connection?
-
-### Documentation
-
-- **Be specific**: Explain what the setting does and what values are valid
-- **Provide examples**: Show common use cases
-- **Add version badges**: Mark new settings with `<VersionBadge version="v0.x" />`
-- **Keep it current**: Update docs when behavior changes
 
 ## Quick Reference
 
@@ -460,12 +351,10 @@ When adding a new configuration setting:
 - [ ] Add field to `SettingsType` in `pkg/wconfig/settingsconfig.go`
 - [ ] Add field to `MetaTSType` in `pkg/waveobj/wtypemeta.go` (if block override needed)
 - [ ] Add default to `pkg/wconfig/defaultconfig/settings.json` (if needed)
-- [ ] Document in `docs/docs/config.mdx`
-- [ ] Run `task generate` to update TypeScript types
-- [ ] Use appropriate atom (`getOverrideConfigAtom` or `getSettingsKeyAtom`) in frontend
+- [ ] Add the key to `schema/settings.json` and a `ConfigKey_*` constant to `pkg/wconfig/metaconsts.go` (plus a `MetaKey_*` constant if block override)
+- [ ] Handle the key in the clients that use it
 
 ## Related Documentation
 
-- **User Documentation**: `docs/docs/config.mdx` - User-facing configuration docs
 - **Type Definitions**: `pkg/wconfig/settingsconfig.go` - Go struct definitions
 - **Metadata Types**: `pkg/waveobj/wtypemeta.go` - Block metadata definitions

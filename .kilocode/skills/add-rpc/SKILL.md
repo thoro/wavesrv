@@ -7,18 +7,16 @@ description: Guide for adding new RPC calls to Wave Terminal. Use when implement
 
 ## Overview
 
-Wave Terminal uses a WebSocket-based RPC (Remote Procedure Call) system for communication between different components. The RPC system allows the frontend, backend, electron main process, remote servers, and terminal blocks to communicate with each other through well-defined commands.
+wavesrv uses `wshrpc`, an RPC system over WebSocket and Unix domain sockets, to talk to its clients (the native app, the `wsh` CLI) and to the remote `wsh` servers it runs on SSH/WSL connections.
 
 This guide covers how to add a new RPC command to the system.
 
 ## Key Files
 
 - `pkg/wshrpc/wshrpctypes.go` - RPC interface and type definitions
-- `pkg/wshrpc/wshserver/wshserver.go` - Main server implementation (most common)
-- `emain/emain-wsh.ts` - Electron main process implementation
-- `frontend/app/store/tabrpcclient.ts` - Frontend tab implementation
+- `pkg/wshrpc/wshserver/wshserver.go` - Main server implementation (most common; topical files like `wshserver_term.go` sit next to it)
 - `pkg/wshrpc/wshremote/wshremote.go` - Remote server implementation
-- `frontend/app/view/term/term-wsh.tsx` - Terminal block implementation
+- `pkg/wshrpc/wshclient/wshclient.go` - Go client wrappers (used by `wsh` and server-side callers)
 
 ## RPC Command Structure
 
@@ -77,20 +75,22 @@ type YourNewResponse struct {
 - Use `json` struct tags with lowercase field names
 - Follow existing patterns in the file for consistency
 
-### Step 3: Generate Bindings
+### Step 3: Add the Go Client Wrapper
 
-After modifying `pkg/wshrpc/wshrpctypes.go`, run code generation to create TypeScript bindings and Go helper code:
+There is no code generator any more (it was removed with the Electron frontend), so add the wrapper to `pkg/wshrpc/wshclient/wshclient.go` by hand, despite the file's "Generated Code" header. Keep the file in alphabetical order and copy the existing pattern:
 
-```bash
-task generate
+```go
+// command "yournew", wshserver.YourNewCommand
+func YourNewCommand(w *wshutil.WshRpc, data wshrpc.CommandYourNewData, opts *wshrpc.RpcOpts) (*wshrpc.YourNewResponse, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.YourNewResponse](w, "yournew", data, opts)
+	return resp, err
+}
 ```
 
-This command will:
-- Generate TypeScript type definitions in `frontend/types/gotypes.d.ts`
-- Create RPC client bindings
-- Update routing code
-
-**Note:** If generation fails, check that your method signature follows all the rules above.
+- The command name is the method name lowercased, without the `Command` suffix
+- Commands without a data argument pass `nil`; streaming commands use `sendRpcRequestResponseStreamHelper`
+- Dispatch is reflection-based (`wshrpc.GenerateWshCommandDeclMap`), so nothing else needs registering
+- Clients outside this repo (the native app) call the command by name and decode the JSON shape from the struct tags; mirror any new types there
 
 ### Step 4: Implement the Command
 
@@ -124,54 +124,7 @@ func (ws *WshServer) YourNewCommand(ctx context.Context, data wshrpc.CommandYour
 - Coordinating between components
 - Handling file operations on the main filesystem
 
-#### B. Electron Implementation
-
-Implement in `emain/emain-wsh.ts`:
-
-```typescript
-async handle_yournew(rh: RpcResponseHelper, data: CommandYourNewData): Promise<YourNewResponse> {
-    // Electron-specific logic
-    const result = await electronAPI.doSomething(data);
-    
-    return {
-        resultfield: result,
-        success: true,
-    };
-}
-```
-
-**Use Electron when:**
-- Accessing native OS features
-- Managing application windows
-- Using Electron APIs (notifications, system tray, etc.)
-- Handling encryption/decryption with safeStorage
-
-#### C. Frontend Tab Implementation
-
-Implement in `frontend/app/store/tabrpcclient.ts`:
-
-```typescript
-async handle_yournew(rh: RpcResponseHelper, data: CommandYourNewData): Promise<YourNewResponse> {
-    // Access frontend state/models
-    const layoutModel = getLayoutModelForStaticTab();
-    
-    // Implement tab-specific logic
-    const result = layoutModel.doSomething(data);
-    
-    return {
-        resultfield: result,
-        success: true,
-    };
-}
-```
-
-**Use tab client when:**
-- Accessing React state or Jotai atoms
-- Manipulating UI layout
-- Capturing screenshots
-- Reading frontend-only data
-
-#### D. Remote Server Implementation
+#### B. Remote Server Implementation
 
 Implement in `pkg/wshrpc/wshremote/wshremote.go`:
 
@@ -196,31 +149,6 @@ func (impl *ServerImpl) RemoteYourNewCommand(ctx context.Context, data wshrpc.Co
 - Managing remote processes
 - Convention: prefix command name with `Remote` (e.g., `RemoteGetInfoCommand`)
 
-#### E. Terminal Block Implementation
-
-Implement in `frontend/app/view/term/term-wsh.tsx`:
-
-```typescript
-async handle_yournew(rh: RpcResponseHelper, data: CommandYourNewData): Promise<YourNewResponse> {
-    // Access terminal-specific data
-    const termWrap = this.model.termRef.current;
-    
-    // Implement terminal logic
-    const result = termWrap.doSomething(data);
-    
-    return {
-        resultfield: result,
-        success: true,
-    };
-}
-```
-
-**Use terminal client when:**
-- Accessing terminal buffer/scrollback
-- Managing VDOM contexts
-- Reading terminal-specific state
-- Interacting with xterm.js
-
 ## Complete Example: Adding GetWaveInfo Command
 
 ### 1. Define Interface
@@ -241,10 +169,16 @@ type WaveInfoData struct {
 }
 ```
 
-### 2. Generate Bindings
+### 2. Add the Client Wrapper
 
-```bash
-task generate
+In `pkg/wshrpc/wshclient/wshclient.go`:
+
+```go
+// command "waveinfo", wshserver.WaveInfoCommand
+func WaveInfoCommand(w *wshutil.WshRpc, opts *wshrpc.RpcOpts) (*wshrpc.WaveInfoData, error) {
+	resp, err := sendRpcRequestCallHelper[*wshrpc.WaveInfoData](w, "waveinfo", nil, opts)
+	return resp, err
+}
 ```
 
 ### 3. Implement in Main Server
@@ -262,14 +196,14 @@ func (ws *WshServer) WaveInfoCommand(ctx context.Context) (*wshrpc.WaveInfoData,
 }
 ```
 
-### 4. Call from Frontend
+### 4. Call from Go (e.g. a `wsh` command)
 
-```typescript
-import { RpcApi } from "@/app/store/wshclientapi";
-
-// Call the RPC
-const info = await RpcApi.WaveInfoCommand(TabRpcClient);
-console.log("Wave Version:", info.version);
+```go
+info, err := wshclient.WaveInfoCommand(RpcClient, nil)
+if err != nil {
+    return fmt.Errorf("getting wave info: %w", err)
+}
+WriteStdout("wave version: %s\n", info.Version)
 ```
 
 ## Streaming Commands
@@ -339,15 +273,13 @@ func (ws *WshServer) StreamYourDataCommand(ctx context.Context, request wshrpc.Y
 
 5. **Consistent Types**: Follow existing naming patterns for request/response types
 
-6. **JSON Tags**: Always use lowercase JSON tags matching frontend conventions
+6. **JSON Tags**: Always use lowercase JSON tags without underscores; clients decode by these names
 
 7. **Documentation**: Add comments explaining complex commands or special behaviors
 
-8. **Type Safety**: Leverage TypeScript generation - your types will be checked on both ends
+8. **Panic Recovery**: Use `panichandler.PanicHandler` in goroutines to prevent crashes
 
-9. **Panic Recovery**: Use `panichandler.PanicHandler` in goroutines to prevent crashes
-
-10. **Route Awareness**: For multi-route scenarios, use `wshutil.GetRpcSourceFromContext(ctx)` to identify callers
+9. **Route Awareness**: For multi-route scenarios, use `wshutil.GetRpcSourceFromContext(ctx)` to identify callers
 
 ## Common Command Patterns
 
@@ -410,14 +342,14 @@ func (ws *WshServer) DoActionCommand(ctx context.Context, data wshrpc.CommandAct
 ### Command Not Found
 
 - Ensure method name ends with `Command`
-- Verify you ran `task generate`
+- Check that the wshclient wrapper sends the right command name (lowercased, no `Command` suffix)
 - Check that the interface is in `WshRpcInterface`
 
 ### Type Mismatch Errors
 
-- Run `task generate` after changing types
+- Update the wshclient wrapper's signature after changing types
 - Ensure JSON tags are lowercase
-- Verify TypeScript code is using generated types
+- Verify the client's copy of the type (e.g. the native app's Swift struct) matches the JSON tags
 
 ### Command Times Out
 
@@ -437,13 +369,10 @@ When adding a new RPC command:
 
 - [ ] Add method to `WshRpcInterface` in `pkg/wshrpc/wshrpctypes.go` (must end with `Command`)
 - [ ] Define request/response types with JSON tags (if needed)
-- [ ] Run `task generate` to create bindings
+- [ ] Add the wrapper to `pkg/wshrpc/wshclient/wshclient.go` (alphabetical)
 - [ ] Implement in appropriate location:
   - [ ] `wshserver.go` for main server (most common)
-  - [ ] `emain-wsh.ts` for Electron
-  - [ ] `tabrpcclient.ts` for frontend
   - [ ] `wshremote.go` for remote (prefix with `Remote`)
-  - [ ] `term-wsh.tsx` for terminal
 - [ ] Add input validation
 - [ ] Handle errors with context
 - [ ] Test the command end-to-end
