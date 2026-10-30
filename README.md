@@ -62,4 +62,4 @@ Once it is ready it prints `WAVESRV-ESTART ws:<addr> web:<addr> version:<version
 
 ## License
 
-Apache-2.0. Based on Wave Terminal by Command Line Inc.; see [LICENSE](LICENSE), [NOTICE](NOTICE) and [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+Apache-2.0. Based on Wave Terminal by Command Line Inc.; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
