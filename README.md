@@ -1,117 +1,65 @@
-<p align="center">
-  <a href="https://www.waveterm.dev">
-	<picture>
-		<source media="(prefers-color-scheme: dark)" srcset="./assets/wave-dark.png">
-		<source media="(prefers-color-scheme: light)" srcset="./assets/wave-light.png">
-		<img alt="Wave Terminal Logo" src="./assets/wave-light.png" width="240">
-	</picture>
-  </a>
-  <br/>
-</p>
+# wavesrv
 
-# Wave Terminal
+The Go backend of [Wave Terminal](https://github.com/wavetermdev/waveterm), with the Electron frontend removed. It builds two binaries:
 
-<div align="center">
+- **wavesrv** — the long-running backend process. It runs terminal blocks (local shells on a pty, SSH and WSL connections), keeps durable shell sessions alive across reconnects and restarts, persists terminal scrollback, stores workspaces/tabs/blocks in SQLite, loads config, and serves the `wshrpc` RPC and `wps` event API that clients talk to.
+- **wsh** — the CLI helper wavesrv installs into local and remote shells; it talks back to wavesrv over `wshrpc`.
 
-[English](README.md) | [한국어](README.ko.md) | [繁體中文](README.zh-TW.md)
+The client is the native macOS app, [thoro/wave-native](https://github.com/thoro/wave-native), which bundles and launches wavesrv.
 
-</div>
+## Releases
 
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fwavetermdev%2Fwaveterm?ref=badge_shield)
+Each [release](https://github.com/thoro/wavesrv/releases) attaches the Go binaries:
 
-Wave is an open-source, AI-integrated terminal for macOS, Linux, and Windows. It works with any AI model. Bring your own API keys for OpenAI, Claude, or Gemini, or run local models via Ollama and LM Studio. No accounts required.
+| Asset                             | Platforms                                           |
+| --------------------------------- | --------------------------------------------------- |
+| `wavesrv.arm64`, `wavesrv.x64`    | macOS                                               |
+| `wsh-<version>-<os>.<arch>[.exe]` | darwin, linux, windows (x64, arm64); linux mips, mips64 |
 
-Wave also supports durable SSH sessions that survive network interruptions and restarts, with automatic reconnection. Edit remote files with a built-in graphical editor and preview files inline without leaving the terminal.
+Releases are cut from `main`: release-drafter keeps a draft release up to date from merged PRs (a `feat/` branch or `feat:` title bumps minor, `major`/`breaking` labels bump major, everything else is a patch), and publishing the draft runs [`release.yml`](.github/workflows/release.yml), which builds and uploads the binaries.
 
-![WaveTerm Screenshot](./assets/wave-screenshot.webp)
+## Building
 
-## Key Features
+Requires Go (see `go.mod` for the version) and, for wavesrv, a C toolchain for CGO/SQLite (Xcode Command Line Tools on macOS).
 
-- Wave AI - Context-aware terminal assistant that reads your terminal output, analyzes widgets, and performs file operations
-- Durable SSH Sessions - Remote terminal sessions survive connection interruptions, network changes, and Wave restarts with automatic reconnection
-- Flexible drag & drop interface to organize terminal blocks, editors, web browsers, and AI assistants
-- Built-in editor for editing remote files with syntax highlighting and modern editor features
-- Rich file preview system for remote files (markdown, images, video, PDFs, CSVs, directories)
-- Quick full-screen toggle for any block - expand terminals, editors, and previews for better visibility, then instantly return to multi-block view
-- AI chat widget with support for multiple models (OpenAI, Claude, Azure, Perplexity, Ollama)
-- Command Blocks for isolating and monitoring individual commands
-- One-click remote connections with full terminal and file system access
-- Secure secret storage using native system backends - store API keys and credentials locally, access them across SSH sessions
-- Rich customization including tab themes, terminal styles, and background images
-- Powerful `wsh` command system for managing your workspace from the CLI and sharing data between terminal sessions
-- Connected file management with `wsh file` - seamlessly copy and sync files between local and remote SSH hosts
+```sh
+# wavesrv
+CGO_ENABLED=1 go build -tags "osusergo,sqlite_omit_load_extension" \
+    -ldflags "-X main.WaveVersion=0.0.0-dev" \
+    -o dist/bin/wavesrv.arm64 cmd/server/main-server.go
 
-## Wave AI
+# wsh for one target (wavesrv expects the wsh-<version>-<os>.<arch> naming)
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
+    -ldflags "-s -w -X main.WaveVersion=0.0.0-dev" \
+    -o dist/bin/wsh-0.0.0-dev-darwin.arm64 cmd/wsh/main-wsh.go
 
-Wave AI is your context-aware terminal assistant with access to your workspace:
+# tests
+go test -race ./pkg/...
+```
 
-- **Terminal Context**: Reads terminal output and scrollback for debugging and analysis
-- **File Operations**: Read, write, and edit files with automatic backups and user approval
-- **CLI Integration**: Use `wsh ai` to pipe output or attach files directly from the command line
-- **BYOK Support**: Bring your own API keys for OpenAI, Claude, Gemini, Azure, and other providers
-- **Local Models**: Run local models with Ollama, LM Studio, and other OpenAI-compatible providers
-- **Free Beta**: Included AI credits while we refine the experience
-- **Coming Soon**: Command execution (with approval)
+[`release.yml`](.github/workflows/release.yml) has the full cross-compile matrix. With wave-native checked out at `./wave-native`, `make wavesrv` there rebuilds its bundled server from this tree.
 
-Learn more in our [Wave AI documentation](https://docs.waveterm.dev/waveai) and [Wave AI Modes documentation](https://docs.waveterm.dev/waveai-modes).
+## Running
 
-## Installation
+wavesrv is normally started by the client. It reads its environment once at startup:
 
-Wave Terminal works on macOS, Linux, and Windows.
+| Variable                   | Meaning                                                                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `WAVETERM_DATA_HOME`       | **Required.** Data dir: SQLite databases, terminal scrollback, sockets.                                    |
+| `WAVETERM_CONFIG_HOME`     | **Required.** Config dir (`settings.json`, connections, widgets, …).                                       |
+| `WAVETERM_APP_PATH`        | App dir; wsh binaries are looked up in its `bin/` as `wsh-<version>-<os>.<arch>[.exe]`.                     |
+| `WAVETERM_WEB_UNIX_SOCKET` | If set, serve the web API and websocket on `web.sock` / `ws.sock` in the data dir instead of loopback TCP. |
 
-Platform-specific installation instructions can be found [here](https://docs.waveterm.dev/gettingstarted).
+Once it is ready it prints `WAVESRV-ESTART ws:<addr> web:<addr> version:<version> buildtime:<time>` on stderr.
 
-You can also install Wave Terminal directly from: [www.waveterm.dev/download](https://www.waveterm.dev/download).
+## Layout
 
-### Minimum requirements
-
-Wave Terminal runs on the following platforms:
-
-- macOS 11 or later (arm64, x64)
-- Windows 10 1809 or later (x64)
-- Linux based on glibc-2.28 or later (Debian 10, RHEL 8, Ubuntu 20.04, etc.) (arm64, x64)
-
-The WSH helper runs on the following platforms:
-
-- macOS 11 or later (arm64, x64)
-- Windows 10 or later (x64)
-- Linux Kernel 2.6.32 or later (x64), Linux Kernel 3.1 or later (arm64)
-
-## Roadmap
-
-Wave is constantly improving! Our roadmap will be continuously updated with our goals for each release. You can find it [here](./ROADMAP.md).
-
-Want to provide input to our future releases? Connect with us on [Discord](https://discord.gg/XfvZ334gwU) or open a [Feature Request](https://github.com/wavetermdev/waveterm/issues/new/choose)!
-
-## Links
-
-- Homepage &mdash; https://www.waveterm.dev
-- Download Page &mdash; https://www.waveterm.dev/download
-- Documentation &mdash; https://docs.waveterm.dev
-- X &mdash; https://x.com/wavetermdev
-- Discord Community &mdash; https://discord.gg/XfvZ334gwU
-
-## Building from Source
-
-See [Building Wave Terminal](BUILD.md).
-
-## Contributing
-
-Wave uses GitHub Issues for issue tracking.
-
-Find more information in our [Contributions Guide](CONTRIBUTING.md), which includes:
-
-- [Ways to contribute](CONTRIBUTING.md#contributing-to-wave-terminal)
-- [Contribution guidelines](CONTRIBUTING.md#before-you-start)
-
-### Sponsoring Wave ❤️
-
-If Wave Terminal is useful to you or your company, consider sponsoring development.
-
-Sponsorship helps support the time spent building and maintaining the project.
-
-- https://github.com/sponsors/wavetermdev
+- `cmd/server`: wavesrv entry point
+- `cmd/wsh`: wsh entry point
+- `pkg/`: backend packages (`blockcontroller`, `remote/conncontroller`, `jobcontroller`, `filestore`, `wstore`, `wshrpc`, `wps`, `wconfig`, …)
+- `db/`: embedded SQLite migrations
+- `schema/`: JSON schemas for the config files
 
 ## License
 
-Wave Terminal is licensed under the Apache-2.0 License. For more information on our dependencies, see [here](./ACKNOWLEDGEMENTS.md).
+Apache-2.0. Based on Wave Terminal by Command Line Inc.; see [LICENSE](LICENSE), [NOTICE](NOTICE) and [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
