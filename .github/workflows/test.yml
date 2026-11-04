@@ -1,0 +1,34 @@
+# Vet and race-test the Go packages on every PR and on main.
+name: Test
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        runs-on: macos-latest # wavesrv ships for macOS only
+        steps:
+            - uses: actions/checkout@v7
+            - uses: actions/setup-go@v7
+              with:
+                  go-version-file: go.mod
+                  cache-dependency-path: go.sum
+
+            - name: Vet
+              run: go vet ./...
+
+            # wsh also ships for linux and windows, where other files build
+            # (e.g. the WSL code), so vet it for those too.
+            - name: Vet wsh (linux, windows)
+              run: |
+                  set -euo pipefail
+                  for t in linux/amd64 windows/amd64; do
+                      GOOS=${t%/*} GOARCH=${t#*/} go vet ./cmd/wsh/...
+                  done
+
+            - name: Test
+              run: go test -race ./...
