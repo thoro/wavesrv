@@ -62,8 +62,6 @@ var AllEvents []string = []string{
 }
 ```
 
-The `WaveEventDataTypes` registration that the comment in `wpstypes.go` asks for lived in the TypeScript generator, which was removed with the Electron frontend; there is nothing to register.
-
 ### Step 3: Define Event Data Structure (Optional)
 
 If your event carries structured data, define a type for it:

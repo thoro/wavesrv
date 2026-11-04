@@ -32,7 +32,7 @@ type MultiArg struct {
 // * methods must end with Command
 // * methods must take context as their first parameter
 // * methods may take additional typed parameters, and may return either just an error, or one return value plus an error
-// * after modifying WshRpcInterface, run `task generate` to regnerate bindings
+// * after modifying WshRpcInterface, add the matching wrapper to wshclient/wshclient.go by hand (there is no generator any more)
 
 type WshRpcInterface interface {
 	AuthenticateCommand(ctx context.Context, data string) (CommandAuthenticateRtnData, error)
